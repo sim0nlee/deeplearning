@@ -4,6 +4,8 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
+import numpy as np
+
 from matplotlib import pyplot as plt
 
 training_data = datasets.MNIST(
@@ -20,13 +22,16 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : 6,
+hyps = {"depth"      : 5,
         "width"      : 100,
         "batch_size" : 256,
         "lr"         : 1e0,
-        "epochs"     : 10,
-        "s_max"      : 0.1,
-        "s_min"      : 0.05}
+        "epochs"     : 5}
+
+c_max = 0
+c_min = -10
+s_max = 1 + c_max / np.sqrt(hyps["width"])
+s_min = 1 + c_min / np.sqrt(hyps["width"])
 
 # Create data loaders.
 train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"])
@@ -42,7 +47,8 @@ class ShapedReLU(nn.Module):
         self.s_min = s_min
 
     def forward(self, x):
-        return self.s_max * torch.maximum(x, torch.tensor([0])) + self.s_min * torch.minimum(x, torch.tensor([0]))
+        return (self.s_max * torch.maximum(x, torch.tensor([0], device=device))
+                + self.s_min * torch.minimum(x, torch.tensor([0], device=device)))
 
 
 class MLP(nn.Module):
@@ -59,7 +65,7 @@ class MLP(nn.Module):
             else:
                 layers.append(nn.Linear(hyps["width"], hyps["width"]))
             if d < hyps["depth"] - 1:
-                layers.append(ShapedReLU(hyps["s_max"], hyps["s_min"]))
+                layers.append(ShapedReLU(s_max, s_min))
 
         self.net = nn.Sequential(*layers)
 
@@ -70,70 +76,71 @@ class MLP(nn.Module):
 
 
 model = MLP().to(device)
+print(model)
 
-x = torch.linspace(-10, 10, 1000)
-plt.plot(x, ShapedReLU(hyps["s_max"], hyps["s_min"])(x))
-plt.show()
+# x = torch.linspace(-10, 10, 1000)
+# plt.plot(x, ShapedReLU(hyps["s_max"], hyps["s_min"])(x))
+# plt.show()
 
-# criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.SGD(model.parameters(), lr=hyperparams["lr"])
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
 
 
-# def train(dataloader, model, loss_fn, optimizer):
-#     size = len(dataloader.dataset)
-#     model.train()
-#     for i, (X, y) in enumerate(dataloader):
-#         X, y = X.to(device), y.to(device)
-#
-#         # Compute prediction error
-#         pred = model(X)
-#         loss = loss_fn(pred, y)
-#
-#         # Backpropagation
-#         loss.backward()
-#         optimizer.step()
-#
-#         if i % 100 == 0:
-#             weight_grads = []
-#             bias_grads = []
-#             for module in model.net:
-#                 if isinstance(module, nn.Linear):
-#                     weight_grads.append(module.weight.grad.ravel())
-#                     bias_grads.append(module.bias.grad.ravel())
-#             weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
-#             bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
-#             print()
-#             print('Weight grads norm:', weight_grad_norms)
-#             print('Bias grads norm:', bias_grad_norms)
-#             print()
-#
-#         optimizer.zero_grad()
-#
-#         if i % 25 == 0:
-#             loss, current = loss.item(), (i + 1) * len(X)
-#             print(f"Loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
-#
-#
-# def test(dataloader, model, loss_fn):
-#     size        = len(dataloader.dataset)
-#     num_batches = len(dataloader)
-#
-#     model.eval()
-#
-#     test_loss, correct = 0, 0
-#     with torch.no_grad():
-#         for X, y in dataloader:
-#             X, y = X.to(device), y.to(device)
-#             pred = model(X)
-#             test_loss += loss_fn(pred, y).item()
-#             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
-#     test_loss /= num_batches
-#     correct /= size
-#     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-#
-#
-# for t in range(hyperparams["epochs"]):
-#     print(f"Epoch {t+1}\n-------------------------------")
-#     train(train_dataloader, model, criterion, optimizer)
-#     test(test_dataloader, model, criterion)
-# print("Done!")
+def train(dataloader, model, loss_fn, optimizer):
+    size = len(dataloader.dataset)
+    model.train()
+    for i, (X, y) in enumerate(dataloader):
+        X, y = X.to(device), y.to(device)
+
+        # Compute prediction error
+        pred = model(X)
+        loss = loss_fn(pred, y)
+
+        # Backpropagation
+        loss.backward()
+        optimizer.step()
+
+        if i % 100 == 0:
+            weight_grads = []
+            bias_grads = []
+            for module in model.net:
+                if isinstance(module, nn.Linear):
+                    weight_grads.append(module.weight.grad.ravel())
+                    bias_grads.append(module.bias.grad.ravel())
+            weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
+            bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
+            print()
+            print('Weight grads norm:', weight_grad_norms)
+            print('Bias grads norm:', bias_grad_norms)
+            print()
+
+        optimizer.zero_grad()
+
+        if i % 25 == 0:
+            loss, current = loss.item(), (i + 1) * len(X)
+            print(f"Loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+
+
+def test(dataloader, model, loss_fn):
+    size        = len(dataloader.dataset)
+    num_batches = len(dataloader)
+
+    model.eval()
+
+    test_loss, correct = 0, 0
+    with torch.no_grad():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+            test_loss += loss_fn(pred, y).item()
+            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+    test_loss /= num_batches
+    correct /= size
+    print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+
+
+for t in range(hyps["epochs"]):
+    print(f"Epoch {t+1}\n-------------------------------")
+    train(train_dataloader, model, criterion, optimizer)
+    test(test_dataloader, model, criterion)
+print("Done!")
