@@ -1,12 +1,18 @@
 import torch
+import torchvision.utils
 from torch import nn
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets
 from torchvision.transforms import ToTensor
+
+import sys
 
 import numpy as np
 
 from matplotlib import pyplot as plt
+
+writer = SummaryWriter("runs/mnist")
 
 training_data = datasets.MNIST(
     root="data",
@@ -22,7 +28,7 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : 5,
+hyps = {"depth"      : 2,
         "width"      : 100,
         "batch_size" : 256,
         "lr"         : 1e0,
@@ -37,7 +43,17 @@ s_min = 1 + c_min / np.sqrt(hyps["width"])
 train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"])
 test_dataloader = DataLoader(test_data, batch_size=hyps["batch_size"])
 
+n_total_steps = len(train_dataloader)
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+examples = next(iter(test_dataloader))
+example_data, example_targets = examples[0], examples[1]
+
+img_grid = torchvision.utils.make_grid(example_data)
+writer.add_image("mnist_images", img_grid)
+writer.close()
+#sys.exit()
 
 
 class ShapedReLU(nn.Module):
@@ -85,8 +101,11 @@ print(model)
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
 
+writer.add_graph(model, example_data)
+writer.close()
+#sys.exit()
 
-def train(dataloader, model, loss_fn, optimizer):
+def train(dataloader, model, loss_fn, optimizer, epoch):
     size = len(dataloader.dataset)
     model.train()
     for i, (X, y) in enumerate(dataloader):
@@ -109,6 +128,8 @@ def train(dataloader, model, loss_fn, optimizer):
                     bias_grads.append(module.bias.grad.ravel())
             weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
             bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
+            writer.add_scalar('Grads norm - weight', weight_grad_norms, epoch * n_total_steps + i)
+            writer.add_scalar('Grads norm - bias', bias_grad_norms, epoch * n_total_steps + i)
             print()
             print('Weight grads norm:', weight_grad_norms)
             print('Bias grads norm:', bias_grad_norms)
@@ -119,6 +140,7 @@ def train(dataloader, model, loss_fn, optimizer):
         if i % 25 == 0:
             loss, current = loss.item(), (i + 1) * len(X)
             print(f"Loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            writer.add_scalar('training loss', loss, epoch * n_total_steps + i)
 
 
 def test(dataloader, model, loss_fn):
@@ -141,6 +163,6 @@ def test(dataloader, model, loss_fn):
 
 for t in range(hyps["epochs"]):
     print(f"Epoch {t+1}\n-------------------------------")
-    train(train_dataloader, model, criterion, optimizer)
+    train(train_dataloader, model, criterion, optimizer, t)
     test(test_dataloader, model, criterion)
 print("Done!")
