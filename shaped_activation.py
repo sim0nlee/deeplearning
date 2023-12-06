@@ -33,7 +33,7 @@ hyps = {"depth"      : [10, 20, 50, 100],
         "epochs"     : 6}
 
 c_max = 0
-c_min = -10
+c_min = -8
 s_max = 1 + c_max / np.sqrt(hyps["width"])
 s_min = 1 + c_min / np.sqrt(hyps["width"])
 
@@ -61,7 +61,7 @@ class ShapedReLU(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, use_batch_norm=False):
+    def __init__(self, use_batch_norm=False, use_shapedReLU=False):
         super().__init__()
 
         layers = []
@@ -78,7 +78,10 @@ class MLP(nn.Module):
                 if use_batch_norm:
                     layers.append(nn.BatchNorm1d(hyps["width"]))
             if d < hyps["depth"] - 1:
-                layers.append(ShapedReLU(s_max, s_min))
+                if use_shapedReLU:
+                    layers.append(ShapedReLU(s_max, s_min))
+                else:
+                    layers.append(nn.ReLU())
 
         self.net = nn.Sequential(*layers)
 
@@ -148,29 +151,36 @@ criterion = nn.CrossEntropyLoss()
 for depth in hyps["depth"]:
     hyps["depth"] = depth
 
-    model_without_bn = MLP(use_batch_norm=False).to(device)
-    model_with_bn = MLP(use_batch_norm=True).to(device)
+    model = MLP(use_batch_norm=False, use_shapedReLU=False).to(device)
+    model_bn = MLP(use_batch_norm=True, use_shapedReLU=False).to(device)
+    model_sReLu = MLP(use_batch_norm=False, use_shapedReLU=True).to(device)
 
-    writer_without_bn = SummaryWriter(f"runs/mnist/without_bn/depth_{depth}")
-    writer_with_bn = SummaryWriter(f"runs/mnist/with_bn/depth_{depth}")
+    writer = SummaryWriter(f"runs/mnist/without_bn/without_shapedReLu/depth_{depth}")
+    writer_bn = SummaryWriter(f"runs/mnist/with_bn/without_shapedReLu/depth_{depth}")
+    writer_sReLu = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu/depth_{depth}")
 
     for t in range(hyps["epochs"]):
-        optimizer_without_bn = torch.optim.SGD(model_without_bn.parameters(), lr=hyps["lr"])
-        optimizer_with_bn = torch.optim.SGD(model_with_bn.parameters(), lr=hyps["lr"])
+        optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
+        optimizer_bn = torch.optim.SGD(model_bn.parameters(), lr=hyps["lr"])
+        optimizer_sReLu = torch.optim.SGD(model_bn.parameters(), lr=hyps["lr"])
 
-        writer_without_bn.add_graph(model_without_bn, example_data)
-        writer_with_bn.add_graph(model_with_bn, example_data)
+        writer.add_graph(model, example_data)
+        writer_bn.add_graph(model_bn, example_data)
+        writer_sReLu.add_graph(model_sReLu, example_data)
 
         print(f"Depth: {depth}, Epoch {t + 1}\n-------------------------------")
-        train(train_dataloader, model_without_bn, criterion, optimizer_without_bn, t, writer=writer_without_bn)
-        test(test_dataloader, model_without_bn, criterion)
+        train(train_dataloader, model, criterion, optimizer, t, writer=writer)
+        test(test_dataloader, model, criterion)
 
-        train(train_dataloader, model_with_bn, criterion, optimizer_with_bn, t, writer=writer_with_bn)
-        test(test_dataloader, model_with_bn, criterion)
+        train(train_dataloader, model_bn, criterion, optimizer_bn, t, writer=writer_bn)
+        test(test_dataloader, model_bn, criterion)
 
-    writer_without_bn.close()
-    writer_with_bn.close()
+        train(train_dataloader, model_sReLu, criterion, optimizer_sReLu, t, writer=writer_sReLu)
+        test(test_dataloader, model_sReLu, criterion)
 
+    writer.close()
+    writer_bn.close()
+    writer_sReLu.close()
 
 
 print("Done!")
