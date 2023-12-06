@@ -12,8 +12,6 @@ import numpy as np
 
 from matplotlib import pyplot as plt
 
-writer = SummaryWriter("runs/mnist")
-
 training_data = datasets.MNIST(
     root="data",
     train=True,
@@ -28,11 +26,11 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : 2,
+hyps = {"depth"      : [10, 20, 50, 100],
         "width"      : 100,
         "batch_size" : 256,
         "lr"         : 1e0,
-        "epochs"     : 5}
+        "epochs"     : 6}
 
 c_max = 0
 c_min = -10
@@ -50,11 +48,6 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 examples = next(iter(test_dataloader))
 example_data, example_targets = examples[0], examples[1]
 
-img_grid = torchvision.utils.make_grid(example_data)
-writer.add_image("mnist_images", img_grid)
-writer.close()
-#sys.exit()
-
 
 class ShapedReLU(nn.Module):
     def __init__(self, s_max, s_min):
@@ -68,7 +61,7 @@ class ShapedReLU(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self):
+    def __init__(self, use_batch_norm=False):
         super().__init__()
 
         layers = []
@@ -76,10 +69,14 @@ class MLP(nn.Module):
         for d in range(hyps["depth"]):
             if d == 0:
                 layers.append(nn.Linear(28 * 28, hyps["width"]))
+                if use_batch_norm:
+                    layers.append(nn.BatchNorm1d(hyps["width"]))
             elif d == hyps["depth"] - 1:
                 layers.append(nn.Linear(hyps["width"], 10))
             else:
                 layers.append(nn.Linear(hyps["width"], hyps["width"]))
+                if use_batch_norm:
+                    layers.append(nn.BatchNorm1d(hyps["width"]))
             if d < hyps["depth"] - 1:
                 layers.append(ShapedReLU(s_max, s_min))
 
@@ -90,22 +87,7 @@ class MLP(nn.Module):
         logits = self.net(x)
         return logits
 
-
-model = MLP().to(device)
-print(model)
-
-# x = torch.linspace(-10, 10, 1000)
-# plt.plot(x, ShapedReLU(hyps["s_max"], hyps["s_min"])(x))
-# plt.show()
-
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
-
-writer.add_graph(model, example_data)
-writer.close()
-#sys.exit()
-
-def train(dataloader, model, loss_fn, optimizer, epoch):
+def train(dataloader, model, loss_fn, optimizer, epoch, writer=None):
     size = len(dataloader.dataset)
     model.train()
     for i, (X, y) in enumerate(dataloader):
@@ -119,7 +101,7 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
         loss.backward()
         optimizer.step()
 
-        if i % 100 == 0:
+        if writer is not None and i % 100 == 0:
             weight_grads = []
             bias_grads = []
             for module in model.net:
@@ -128,8 +110,8 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
                     bias_grads.append(module.bias.grad.ravel())
             weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
             bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
-            writer.add_scalar('Grads norm - weight', weight_grad_norms, epoch * n_total_steps + i)
-            writer.add_scalar('Grads norm - bias', bias_grad_norms, epoch * n_total_steps + i)
+            writer.add_scalar('Weight grads norm', weight_grad_norms, epoch * n_total_steps + i)
+            writer.add_scalar('Bias grads norm', bias_grad_norms, epoch * n_total_steps + i)
             print()
             print('Weight grads norm:', weight_grad_norms)
             print('Bias grads norm:', bias_grad_norms)
@@ -161,8 +143,34 @@ def test(dataloader, model, loss_fn):
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 
-for t in range(hyps["epochs"]):
-    print(f"Epoch {t+1}\n-------------------------------")
-    train(train_dataloader, model, criterion, optimizer, t)
-    test(test_dataloader, model, criterion)
+criterion = nn.CrossEntropyLoss()
+
+for depth in hyps["depth"]:
+    hyps["depth"] = depth
+
+    model_without_bn = MLP(use_batch_norm=False).to(device)
+    model_with_bn = MLP(use_batch_norm=True).to(device)
+
+    writer_without_bn = SummaryWriter(f"runs/mnist/without_bn/depth_{depth}")
+    writer_with_bn = SummaryWriter(f"runs/mnist/with_bn/depth_{depth}")
+
+    for t in range(hyps["epochs"]):
+        optimizer_without_bn = torch.optim.SGD(model_without_bn.parameters(), lr=hyps["lr"])
+        optimizer_with_bn = torch.optim.SGD(model_with_bn.parameters(), lr=hyps["lr"])
+
+        writer_without_bn.add_graph(model_without_bn, example_data)
+        writer_with_bn.add_graph(model_with_bn, example_data)
+
+        print(f"Depth: {depth}, Epoch {t + 1}\n-------------------------------")
+        train(train_dataloader, model_without_bn, criterion, optimizer_without_bn, t, writer=writer_without_bn)
+        test(test_dataloader, model_without_bn, criterion)
+
+        train(train_dataloader, model_with_bn, criterion, optimizer_with_bn, t, writer=writer_with_bn)
+        test(test_dataloader, model_with_bn, criterion)
+
+    writer_without_bn.close()
+    writer_with_bn.close()
+
+
+
 print("Done!")
