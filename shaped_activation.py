@@ -29,13 +29,8 @@ test_data = datasets.MNIST(
 hyps = {"depth"      : [10, 20, 50, 100],
         "width"      : 100,
         "batch_size" : 256,
-        "lr"         : 1e0,
+        "lr"         : 1e-5,
         "epochs"     : 6}
-
-c_max = 0
-c_min = -8
-s_max = 1 + c_max / np.sqrt(hyps["width"])
-s_min = 1 + c_min / np.sqrt(hyps["width"])
 
 # Create data loaders.
 train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"])
@@ -48,12 +43,25 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 examples = next(iter(test_dataloader))
 example_data, example_targets = examples[0], examples[1]
 
+class ShapedReLU_Trainable(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.c_max = torch.nn.Parameter(torch.tensor([0.0], requires_grad=True))
+        self.c_min = torch.nn.Parameter(torch.tensor([-10.0], requires_grad=True))
+    def forward(self, x):
+        s_max = 1 + self.c_max / np.sqrt(hyps["width"])
+        s_min = 1 + self.c_min / np.sqrt(hyps["width"])
+        return (s_max * torch.maximum(x, torch.tensor([0], device=device))
+                + s_min * torch.minimum(x, torch.tensor([0], device=device)))
+
 
 class ShapedReLU(nn.Module):
-    def __init__(self, s_max, s_min):
+    def __init__(self):
         super().__init__()
-        self.s_max = s_max
-        self.s_min = s_min
+        c_max = 0
+        c_min = -8
+        self.s_max = 1 + c_max / np.sqrt(hyps["width"])
+        self.s_min = 1 + c_min / np.sqrt(hyps["width"])
 
     def forward(self, x):
         return (self.s_max * torch.maximum(x, torch.tensor([0], device=device))
@@ -61,7 +69,7 @@ class ShapedReLU(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, use_batch_norm=False, use_shapedReLU=False):
+    def __init__(self, use_batch_norm=False, use_shapedReLU=False, use_shapedReLU_trainable=False):
         super().__init__()
 
         layers = []
@@ -79,7 +87,9 @@ class MLP(nn.Module):
                     layers.append(nn.BatchNorm1d(hyps["width"]))
             if d < hyps["depth"] - 1:
                 if use_shapedReLU:
-                    layers.append(ShapedReLU(s_max, s_min))
+                    layers.append(ShapedReLU())
+                elif use_shapedReLU_trainable:
+                    layers.append(ShapedReLU_Trainable())
                 else:
                     layers.append(nn.ReLU())
 
@@ -111,6 +121,9 @@ def train(dataloader, model, loss_fn, optimizer, epoch, writer=None):
                 if isinstance(module, nn.Linear):
                     weight_grads.append(module.weight.grad.ravel())
                     bias_grads.append(module.bias.grad.ravel())
+                if isinstance(module, ShapedReLU_Trainable):
+                    writer.add_scalar('Cmax', list(module.parameters())[0], epoch * n_total_steps + i)
+                    writer.add_scalar('Cmin', list(module.parameters())[1], epoch * n_total_steps + i)
             weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
             bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
             writer.add_scalar('Weight grads norm', weight_grad_norms, epoch * n_total_steps + i)
@@ -151,36 +164,44 @@ criterion = nn.CrossEntropyLoss()
 for depth in hyps["depth"]:
     hyps["depth"] = depth
 
-    model = MLP(use_batch_norm=False, use_shapedReLU=False).to(device)
-    model_bn = MLP(use_batch_norm=True, use_shapedReLU=False).to(device)
-    model_sReLu = MLP(use_batch_norm=False, use_shapedReLU=True).to(device)
+    # model = MLP(use_batch_norm=False, use_shapedReLU=False).to(device)
+    # model_bn = MLP(use_batch_norm=True, use_shapedReLU=False).to(device)
+    # model_sReLU = MLP(use_batch_norm=False, use_shapedReLU=True).to(device)
+    model_sReLU_train = MLP(use_batch_norm=False, use_shapedReLU=False, use_shapedReLU_trainable=True).to(device)
 
-    writer = SummaryWriter(f"runs/mnist/without_bn/without_shapedReLu/depth_{depth}")
-    writer_bn = SummaryWriter(f"runs/mnist/with_bn/without_shapedReLu/depth_{depth}")
-    writer_sReLu = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu/depth_{depth}")
+    # writer = SummaryWriter(f"runs/mnist/without_bn/with_ReLU/depth_{depth}")
+    # writer_bn = SummaryWriter(f"runs/mnist/with_bn/with_ReLU/depth_{depth}")
+    # writer_sReLU = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu/depth_{depth}")
+    writer_sReLU_train = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu_train/depth_{depth}")
 
     for t in range(hyps["epochs"]):
-        optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
-        optimizer_bn = torch.optim.SGD(model_bn.parameters(), lr=hyps["lr"])
-        optimizer_sReLu = torch.optim.SGD(model_bn.parameters(), lr=hyps["lr"])
+        # optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
+        # optimizer_bn = torch.optim.SGD(model_bn.parameters(), lr=hyps["lr"])
+        # optimizer_sReLu = torch.optim.SGD(model_sReLU.parameters(), lr=hyps["lr"])
+        optimizer_sReLu_train = torch.optim.SGD(model_sReLU_train.parameters(), lr=hyps["lr"])
 
-        writer.add_graph(model, example_data)
-        writer_bn.add_graph(model_bn, example_data)
-        writer_sReLu.add_graph(model_sReLu, example_data)
+        # writer.add_graph(model, example_data)
+        # writer_bn.add_graph(model_bn, example_data)
+        # writer_sReLU.add_graph(model_sReLU, example_data)
+        writer_sReLU_train.add_graph(model_sReLU_train, example_data)
 
         print(f"Depth: {depth}, Epoch {t + 1}\n-------------------------------")
-        train(train_dataloader, model, criterion, optimizer, t, writer=writer)
-        test(test_dataloader, model, criterion)
+        # train(train_dataloader, model, criterion, optimizer, t, writer=writer)
+        # test(test_dataloader, model, criterion)
 
-        train(train_dataloader, model_bn, criterion, optimizer_bn, t, writer=writer_bn)
-        test(test_dataloader, model_bn, criterion)
+        # train(train_dataloader, model_bn, criterion, optimizer_bn, t, writer=writer_bn)
+        # test(test_dataloader, model_bn, criterion)
 
-        train(train_dataloader, model_sReLu, criterion, optimizer_sReLu, t, writer=writer_sReLu)
-        test(test_dataloader, model_sReLu, criterion)
+        # train(train_dataloader, model_sReLU, criterion, optimizer_sReLu, t, writer=writer_sReLU)
+        # test(test_dataloader, model_sReLU, criterion)
 
-    writer.close()
-    writer_bn.close()
-    writer_sReLu.close()
+        train(train_dataloader, model_sReLU_train, criterion, optimizer_sReLu_train, t, writer=writer_sReLU_train)
+        test(test_dataloader, model_sReLU_train, criterion)
+
+    # writer.close()
+    # writer_bn.close()
+    # writer_sReLU.close()
+    writer_sReLU_train.close()
 
 
 print("Done!")
