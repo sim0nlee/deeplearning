@@ -22,7 +22,7 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : 5,
+hyps = {"depth"      : 100,
         "width"      : 100,
         "batch_size" : 256,
         "lr"         : 1e0,
@@ -34,7 +34,7 @@ s_max = 1 + c_max / np.sqrt(hyps["width"])
 s_min = 1 + c_min / np.sqrt(hyps["width"])
 
 # Create data loaders.
-train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"])
+train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"], shuffle=True)
 test_dataloader = DataLoader(test_data, batch_size=hyps["batch_size"])
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
