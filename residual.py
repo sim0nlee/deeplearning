@@ -27,7 +27,7 @@ hyperparams = {"batch_size": 256,
                "width"     : 100}
 
 
-BETA_init = np.sqrt(hyperparams["depth"])
+BETA_init = 1.0
 
 train_dataloader = DataLoader(training_data, batch_size=hyperparams["batch_size"])
 test_dataloader = DataLoader(test_data, batch_size=hyperparams["batch_size"])
@@ -36,20 +36,19 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 class Residual(nn.Module):
-    def __init__(self, size_in, size_out) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.beta = torch.nn.Parameter(torch.tensor(BETA_init, dtype=torch.float32))
+        self.beta = torch.nn.Parameter(torch.tensor(BETA_init, dtype=torch.float32), requires_grad=True)
         self.L = hyperparams["depth"]
-        weights = torch.Tensor(size_out, size_in)
-        bias = torch.Tensor(size_out)
-        self.weights = torch.nn.Parameter(weights)
-        self.bias = torch.nn.Parameter(bias)
-        #self.linear = nn.Linear(hyperparams["width"], hyperparams["width"])
+        self.linear = nn.Linear(hyperparams["width"], hyperparams["width"])
+        # weights = torch.Tensor(size_out, size_in)
+        # bias = torch.Tensor(size_out)
+        # self.weights = torch.nn.Parameter(weights, requires_grad=True)
+        # self.bias = torch.nn.Parameter(bias, requires_grad=True)
 
     def forward(self, x):
-        x_ = x
-        x = self.beta/np.sqrt(self.L) * torch.mm(x, self.weights.t())
-        return torch.add(x, self.bias) + x_
+        return self.beta/np.sqrt(self.L) * self.linear(x) + x
+        #return self.beta/np.sqrt(self.L) * torch.mm(x, self.weights.t()) + x
     
 
 class MLP(nn.Module):
@@ -65,7 +64,8 @@ class MLP(nn.Module):
                 layers.append(nn.Linear(hyperparams["width"], 10))
             else:
                 layers.append(nn.ReLU())
-                layers.append(Residual(hyperparams["width"], hyperparams["width"]))
+                layers.append(Residual())
+                
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
