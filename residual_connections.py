@@ -23,7 +23,7 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : 5,
+hyps = {"depth"      : 100,
         "width"      : 100,
         "batch_size" : 256,
         "lr"         : 1e0,

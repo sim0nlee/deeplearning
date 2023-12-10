@@ -44,8 +44,6 @@ class MLP(nn.Module):
                 layers.append(nn.Linear(hyps["width"], 10))
             else:
                 layers.append(nn.Linear(hyps["width"], hyps["width"]))
-            if d < hyps["depth"] - 1:
-                layers.append(nn.ReLU())
 
         self.net = nn.Sequential(*layers)
 
