@@ -26,10 +26,10 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : [10, 20, 50, 100],
-        "width"      : 100,
+hyps = {"depth"      : [150],
+        "width"      : 150,
         "batch_size" : 256,
-        "lr"         : 1e-5,
+        "lr"         : 1e-2,
         "epochs"     : 6}
 
 # Create data loaders.
@@ -59,7 +59,7 @@ class ShapedReLU(nn.Module):
     def __init__(self):
         super().__init__()
         c_max = 0
-        c_min = -8
+        c_min = -1
         self.s_max = 1 + c_max / np.sqrt(hyps["width"])
         self.s_min = 1 + c_min / np.sqrt(hyps["width"])
 
@@ -69,20 +69,32 @@ class ShapedReLU(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, use_batch_norm=False, use_shapedReLU=False, use_shapedReLU_trainable=False):
+    def __init__(self, use_batch_norm=False, use_shapedReLU=False, use_shapedReLU_trainable=False, normalizing_constant=2.0):
         super().__init__()
 
         layers = []
 
         for d in range(hyps["depth"]):
             if d == 0:
-                layers.append(nn.Linear(28 * 28, hyps["width"]))
+                linear_layer = nn.Linear(28 * 28, hyps["width"], bias=False)
+                nn.init.normal_(linear_layer.weight.data, mean=0, std=1)
+                # Scale the weights of the linear layer
+                linear_layer.weight.data *= (1 / np.sqrt(28 * 28))
+                layers.append(linear_layer)
                 if use_batch_norm:
                     layers.append(nn.BatchNorm1d(hyps["width"]))
             elif d == hyps["depth"] - 1:
-                layers.append(nn.Linear(hyps["width"], 10))
+                linear_layer = nn.Linear(hyps["width"], 10, bias=False)
+                nn.init.normal_(linear_layer.weight.data, mean=0, std=1)
+                # Scale the weights of the linear layer
+                linear_layer.weight.data *= np.sqrt(normalizing_constant / hyps["width"])
+                layers.append(linear_layer)
             else:
-                layers.append(nn.Linear(hyps["width"], hyps["width"]))
+                linear_layer = nn.Linear(hyps["width"], hyps["width"], bias=False)
+                nn.init.normal_(linear_layer.weight.data, mean=0, std=1)
+                # Scale the weights of the linear layer
+                linear_layer.weight.data *= np.sqrt(normalizing_constant / hyps["width"])
+                layers.append(linear_layer)
                 if use_batch_norm:
                     layers.append(nn.BatchNorm1d(hyps["width"]))
             if d < hyps["depth"] - 1:
@@ -116,21 +128,21 @@ def train(dataloader, model, loss_fn, optimizer, epoch, writer=None):
 
         if writer is not None and i % 100 == 0:
             weight_grads = []
-            bias_grads = []
+            # bias_grads = []
             for module in model.net:
                 if isinstance(module, nn.Linear):
                     weight_grads.append(module.weight.grad.ravel())
-                    bias_grads.append(module.bias.grad.ravel())
+                    # bias_grads.append(module.bias.grad.ravel())
                 if isinstance(module, ShapedReLU_Trainable):
                     writer.add_scalar('Cmax', list(module.parameters())[0], epoch * n_total_steps + i)
                     writer.add_scalar('Cmin', list(module.parameters())[1], epoch * n_total_steps + i)
             weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
-            bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
+            # bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
             writer.add_scalar('Weight grads norm', weight_grad_norms, epoch * n_total_steps + i)
-            writer.add_scalar('Bias grads norm', bias_grad_norms, epoch * n_total_steps + i)
+            # writer.add_scalar('Bias grads norm', bias_grad_norms, epoch * n_total_steps + i)
             print()
             print('Weight grads norm:', weight_grad_norms)
-            print('Bias grads norm:', bias_grad_norms)
+            # print('Bias grads norm:', bias_grad_norms)
             print()
 
         optimizer.zero_grad()
@@ -164,44 +176,44 @@ criterion = nn.CrossEntropyLoss()
 for depth in hyps["depth"]:
     hyps["depth"] = depth
 
-    # model = MLP(use_batch_norm=False, use_shapedReLU=False).to(device)
+    model = MLP(use_batch_norm=False, use_shapedReLU=False).to(device)
     # model_bn = MLP(use_batch_norm=True, use_shapedReLU=False).to(device)
-    # model_sReLU = MLP(use_batch_norm=False, use_shapedReLU=True).to(device)
-    model_sReLU_train = MLP(use_batch_norm=False, use_shapedReLU=False, use_shapedReLU_trainable=True).to(device)
+    model_sReLU = MLP(use_batch_norm=False, use_shapedReLU=True).to(device)
+    # model_sReLU_train = MLP(use_batch_norm=False, use_shapedReLU=False, use_shapedReLU_trainable=True).to(device)
 
-    # writer = SummaryWriter(f"runs/mnist/without_bn/with_ReLU/depth_{depth}")
+    writer = SummaryWriter(f"runs/mnist/without_bn/with_ReLU/depth_{depth}")
     # writer_bn = SummaryWriter(f"runs/mnist/with_bn/with_ReLU/depth_{depth}")
-    # writer_sReLU = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu/depth_{depth}")
-    writer_sReLU_train = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu_train/depth_{depth}")
+    writer_sReLU = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu/depth_{depth}")
+    # writer_sReLU_train = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu_train/depth_{depth}")
 
     for t in range(hyps["epochs"]):
-        # optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
+        optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
         # optimizer_bn = torch.optim.SGD(model_bn.parameters(), lr=hyps["lr"])
-        # optimizer_sReLu = torch.optim.SGD(model_sReLU.parameters(), lr=hyps["lr"])
-        optimizer_sReLu_train = torch.optim.SGD(model_sReLU_train.parameters(), lr=hyps["lr"])
+        optimizer_sReLu = torch.optim.SGD(model_sReLU.parameters(), lr=hyps["lr"])
+        # optimizer_sReLu_train = torch.optim.SGD(model_sReLU_train.parameters(), lr=hyps["lr"])
 
-        # writer.add_graph(model, example_data)
+        writer.add_graph(model, example_data)
         # writer_bn.add_graph(model_bn, example_data)
-        # writer_sReLU.add_graph(model_sReLU, example_data)
-        writer_sReLU_train.add_graph(model_sReLU_train, example_data)
+        writer_sReLU.add_graph(model_sReLU, example_data)
+        #writer_sReLU_train.add_graph(model_sReLU_train, example_data)
 
         print(f"Depth: {depth}, Epoch {t + 1}\n-------------------------------")
-        # train(train_dataloader, model, criterion, optimizer, t, writer=writer)
-        # test(test_dataloader, model, criterion)
+        train(train_dataloader, model, criterion, optimizer, t, writer=writer)
+        test(test_dataloader, model, criterion)
 
         # train(train_dataloader, model_bn, criterion, optimizer_bn, t, writer=writer_bn)
         # test(test_dataloader, model_bn, criterion)
 
-        # train(train_dataloader, model_sReLU, criterion, optimizer_sReLu, t, writer=writer_sReLU)
-        # test(test_dataloader, model_sReLU, criterion)
+        train(train_dataloader, model_sReLU, criterion, optimizer_sReLu, t, writer=writer_sReLU)
+        test(test_dataloader, model_sReLU, criterion)
 
-        train(train_dataloader, model_sReLU_train, criterion, optimizer_sReLu_train, t, writer=writer_sReLU_train)
-        test(test_dataloader, model_sReLU_train, criterion)
+        # train(train_dataloader, model_sReLU_train, criterion, optimizer_sReLu_train, t, writer=writer_sReLU_train)
+        # test(test_dataloader, model_sReLU_train, criterion)
 
-    # writer.close()
-    # writer_bn.close()
-    # writer_sReLU.close()
-    writer_sReLU_train.close()
+    writer.close()
+    #writer_bn.close()
+    writer_sReLU.close()
+    #writer_sReLU_train.close()
 
 
 print("Done!")
