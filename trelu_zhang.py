@@ -22,10 +22,10 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : 10,
+hyps = {"depth"      : 20,
         "width"      : 100,
         "batch_size" : 256,
-        "lr"         : 1e-1,
+        "lr"         : 1e0,
         "epochs"     : 10}
 
 train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"], shuffle=True)
@@ -77,8 +77,8 @@ model = MLP().to(device)
 # plt.show()
 
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
-
+#optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
+optimizer = torch.optim.Adam(model.parameters())
 
 def train(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
