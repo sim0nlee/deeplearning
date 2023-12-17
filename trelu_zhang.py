@@ -22,33 +22,27 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : 3,
+hyps = {"depth"      : 10,
         "width"      : 100,
         "batch_size" : 256,
-        "lr"         : 1e0,
-        "epochs"     : 5}
+        "lr"         : 1e-1,
+        "epochs"     : 10}
 
-c_max = 0
-c_min = -10
-s_max = 1
-s_min = 0.25
-
-# Create data loaders.
 train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"], shuffle=True)
 test_dataloader = DataLoader(test_data, batch_size=hyps["batch_size"])
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class ShapedReLU(nn.Module):
-    def __init__(self, s_max, s_min):
+class TReLU(nn.Module):
+    def __init__(self):
         super().__init__()
-        self.s_max = s_max
-        self.s_min = s_min
+        self.alpha = nn.Parameter(torch.rand(1), requires_grad=True)
 
     def forward(self, x):
-        return (self.s_max * torch.maximum(x, torch.tensor([0], device=device))
-                + self.s_min * torch.minimum(x, torch.tensor([0], device=device)))
+        return torch.sqrt(2. / (1. + self.alpha ** 2.)) * \
+                (torch.maximum(x, torch.tensor([0], device=device)) +
+                self.alpha * torch.minimum(x, torch.tensor([0], device=device)))
 
 
 class MLP(nn.Module):
@@ -58,14 +52,14 @@ class MLP(nn.Module):
         layers = []
 
         for d in range(hyps["depth"]):
-            if d == 0:
+            if d == 0:  # Input layer
                 layers.append(nn.Linear(28 * 28, hyps["width"]))
-            elif d == hyps["depth"] - 1:
+            elif d == hyps["depth"] - 1:  # Last layer
                 layers.append(nn.Linear(hyps["width"], 10))
-            else:
+            else:  # Hidden layers
                 layers.append(nn.Linear(hyps["width"], hyps["width"]))
-            if d < hyps["depth"] - 1:
-                layers.append(ShapedReLU(s_max, s_min))
+            if d < hyps["depth"] - 1:  # Activation functions after all layers but the last
+                layers.append(TReLU())
 
         self.net = nn.Sequential(*layers)
 
@@ -76,7 +70,7 @@ class MLP(nn.Module):
 
 
 model = MLP().to(device)
-print(model)
+# print(model)
 
 # x = torch.linspace(-10, 10, 1000)
 # plt.plot(x, ShapedReLU(hyps["s_max"], hyps["s_min"])(x))
@@ -103,15 +97,21 @@ def train(dataloader, model, loss_fn, optimizer):
         if i % 100 == 0:
             weight_grads = []
             bias_grads = []
+            alphas = []
             for module in model.net:
                 if isinstance(module, nn.Linear):
                     weight_grads.append(module.weight.grad.ravel())
                     bias_grads.append(module.bias.grad.ravel())
+                if isinstance(module, TReLU):
+                    for param in module.parameters():
+                        alphas.append(param.data.item())
+
             weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
             bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
             print()
             print('Weight grads norm:', weight_grad_norms.item())
             print('Bias grads norm:', bias_grad_norms.item())
+            print('TReLU alphas:', ["{:.5f}".format(alpha) for alpha in alphas])
             print()
 
         optimizer.zero_grad()
@@ -136,11 +136,12 @@ def test(dataloader, model, loss_fn):
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
     test_loss /= num_batches
     correct /= size
-    print(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+    print(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n\n")
 
 
 for t in range(hyps["epochs"]):
-    print(f"Epoch {t+1}\n-------------------------------")
+    print(f"EPOCH {t+1}\n-------------------------------")
     train(train_dataloader, model, criterion, optimizer)
     test(test_dataloader, model, criterion)
 print("Done!")
+
