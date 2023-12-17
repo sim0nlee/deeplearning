@@ -4,6 +4,8 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
+from itertools import chain
+
 import numpy as np
 
 from matplotlib import pyplot as plt
@@ -22,7 +24,7 @@ test_data = datasets.MNIST(
     transform=ToTensor(),
 )
 
-hyps = {"depth"      : 20,
+hyps = {"depth"      : 100,
         "width"      : 100,
         "batch_size" : 256,
         "lr"         : 1e0,
@@ -58,10 +60,28 @@ class MLP(nn.Module):
                 layers.append(nn.Linear(hyps["width"], 10))
             else:  # Hidden layers
                 layers.append(nn.Linear(hyps["width"], hyps["width"]))
+                layers.append(nn.BatchNorm1d(hyps["width"]))
             if d < hyps["depth"] - 1:  # Activation functions after all layers but the last
+                # layers.append(torch.nn.ReLU())
                 layers.append(TReLU())
 
         self.net = nn.Sequential(*layers)
+
+    def base_params(self):
+        params = []
+        for l in self.net:
+            if isinstance(l, nn.Linear) or isinstance(l, nn.BatchNorm1d):
+                for param in l.parameters():
+                    params.append(param)
+        return params
+
+    def trelu_params(self):
+        params = []
+        for l in self.net:
+            if isinstance(l, TReLU):
+                for param in l.parameters():
+                    params.append(param)
+        return params
 
     def forward(self, x):
         x = nn.Flatten()(x)
@@ -70,7 +90,6 @@ class MLP(nn.Module):
 
 
 model = MLP().to(device)
-# print(model)
 
 # x = torch.linspace(-10, 10, 1000)
 # plt.plot(x, ShapedReLU(hyps["s_max"], hyps["s_min"])(x))
@@ -78,6 +97,10 @@ model = MLP().to(device)
 
 criterion = nn.CrossEntropyLoss()
 #optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
+optimizer = torch.optim.Adam([
+    {'params': model.base_params()},
+    {'params': model.trelu_params(), 'lr': 1e1}
+])
 optimizer = torch.optim.Adam(model.parameters())
 
 def train(dataloader, model, loss_fn, optimizer):
