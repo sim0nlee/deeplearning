@@ -39,7 +39,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 class TReLU(nn.Module):
     def __init__(self):
         super().__init__()
-        self.alpha = nn.Parameter(torch.rand(1), requires_grad=True)
+        self.alpha = nn.Parameter(torch.tensor([1.0]), requires_grad=True)   # nn.Parameter(torch.rand(1), requires_grad=True)
 
     def forward(self, x):
         return torch.sqrt(2. / (1. + self.alpha ** 2.)) * \
@@ -99,9 +99,8 @@ criterion = nn.CrossEntropyLoss()
 #optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
 optimizer = torch.optim.Adam([
     {'params': model.base_params()},
-    {'params': model.trelu_params(), 'lr': 1e1}
+    {'params': model.trelu_params(), 'lr': 1e-2}
 ])
-optimizer = torch.optim.Adam(model.parameters())
 
 def train(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
