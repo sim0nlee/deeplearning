@@ -22,24 +22,20 @@ transform = transforms.Compose([
 train_dataset = ImageFolder('tiny-imagenet-200/train', transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 
-########################################################################################################################
-
 # resnetX = (Num of channels, repetition, Bottleneck_expansion , Bottleneck_layer)
-model_parameters={}
+model_parameters = {}
 model_parameters['resnet18'] = [[64, 128, 256, 512], [2, 2, 2, 2], 1, False]
 model_parameters['resnet34'] = [[64, 128, 256, 512], [3, 4, 6, 3], 1, False]
 model_parameters['resnet50'] = [[64, 128, 256, 512], [3, 4, 6, 3], 4, True]
 model_parameters['resnet101'] = [[64, 128, 256, 512], [3, 4, 23, 3], 4, True]
 model_parameters['resnet152'] = [[64, 128, 256, 512], [3, 8, 36, 3], 4, True]
 
-########################################################################################################################
-
 # Create ResNet model
 model = ResNet(model_parameters['resnet18'], in_channels=3, num_classes=200).to(device)
 
 # Define loss function and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+optimizer = optim.Adam(model.parameters(), lr=0.001)  # Change optimizer to Adam
 
 # Set up TensorBoard
 writer = SummaryWriter('logs/tiny-imagenet-200/base')
@@ -49,6 +45,9 @@ num_epochs = 10
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
+    correct_predictions = 0
+    total_samples = 0
+
     for step, (inputs, labels) in enumerate(tqdm(train_loader, desc=f'Epoch {epoch + 1}/{num_epochs}')):
         inputs, labels = inputs.to(device), labels.to(device)
 
@@ -60,8 +59,14 @@ for epoch in range(num_epochs):
 
         running_loss += loss.item()
 
-        # Log training loss to TensorBoard
+        # Compute accuracy
+        _, predicted = torch.max(outputs, 1)
+        correct_predictions += (predicted == labels).sum().item()
+        total_samples += labels.size(0)
+
+        # Log training loss and accuracy to TensorBoard
         writer.add_scalar('Training Loss', loss.item(), epoch * len(train_loader) + step)
+        writer.add_scalar('Training Accuracy', correct_predictions / total_samples, epoch * len(train_loader) + step)
 
         # Log gradients of selected parameters to TensorBoard
         if step % 10 == 0:
@@ -70,10 +75,11 @@ for epoch in range(num_epochs):
                     writer.add_histogram(name + '_grad', param.grad, epoch * len(train_loader) + step)
 
     average_loss = running_loss / len(train_loader)
-    print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {average_loss}")
+    accuracy = correct_predictions / total_samples
+    print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {average_loss}, Accuracy: {accuracy}")
 
 # Close TensorBoard writer
 writer.close()
 
 # Save the trained model if needed
-torch.save(model.state_dict(), 'resnet_model.pth')
+torch.save(model.state_dict(), 'resnet_model_adam.pth')
