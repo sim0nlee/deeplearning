@@ -25,6 +25,7 @@ print(f"{device=}")
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 # Augmentation using imgaug
@@ -63,6 +64,13 @@ model = ResNet(model_parameters['resnet50'], in_channels=3, num_classes=200).to(
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)  # Change optimizer to Adam
 
+# Set up TensorBoard for model graph logging
+graph_writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/graph')
+
+# Add the model graph to TensorBoard
+dummy_input = torch.randn(1, 3, 224, 224).to(device)  # Create a dummy input with the same shape as your actual input
+graph_writer.add_graph(model, dummy_input)
+
 # Set up TensorBoard
 writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/train')
 
@@ -74,7 +82,7 @@ checkpoint_dir = 'checkpoints/base/resnet50'
 os.makedirs(checkpoint_dir, exist_ok=True)
 
 # Training loop
-num_epochs = 10
+num_epochs = 20
 
 # Save a checkpoint every 2 epochs
 checkpoint_interval = 2
@@ -154,11 +162,10 @@ for epoch in range(num_epochs):
 
     print(f"Epoch {epoch + 1}/{num_epochs}, Test Accuracy: {accuracy_test}")
 
-# Close the test TensorBoard writer
+# Close TensorBoard writers
 test_writer.close()
-
-# Close TensorBoard writer
 writer.close()
+graph_writer.close()
 
 # Save the final trained model
 models_dir = 'models'
