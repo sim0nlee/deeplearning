@@ -1,14 +1,16 @@
+import numpy as np
+
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
-from itertools import chain
-
-import numpy as np
-
 from matplotlib import pyplot as plt
+from scipy.optimize import fsolve
+
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
 
 training_data = datasets.MNIST(
     root="data",
@@ -28,10 +30,13 @@ hyps = {"depth"      : 100,
         "width"      : 100,
         "batch_size" : 256,
         "lr"         : 1e0,
-        "epochs"     : 10}
+        "epochs"     : 5,
+        "eta"        : 0.9}
 
 train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"], shuffle=True)
 test_dataloader = DataLoader(test_data, batch_size=hyps["batch_size"])
+
+n_total_steps = len(train_dataloader)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -39,7 +44,9 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 class TReLU(nn.Module):
     def __init__(self):
         super().__init__()
-        self.alpha = nn.Parameter(torch.tensor([1.0]), requires_grad=True)   # nn.Parameter(torch.rand(1), requires_grad=True)
+        self.alpha = nn.Parameter(torch.tensor([1.0]), requires_grad=True)
+        # self.alpha = torch.tensor([1.75303419], device=device)
+        # self.alpha = torch.tensor([0.57043953], device=device)
 
     def forward(self, x):
         return torch.sqrt(2. / (1. + self.alpha ** 2.)) * \
@@ -89,11 +96,34 @@ class MLP(nn.Module):
         return logits
 
 
+def C(c, alpha):
+    """Returns the value of the C map for phi~(x) with given alpha"""
+    return c + (((1 - alpha) ** 2) / (torch.pi * (1 + alpha ** 2))) * (np.sqrt(1 - c ** 2) - c * np.arccos(c))
+
+
+def C_f(alpha, c=0):
+    cf = C(c, alpha)
+    for _ in range(hyps["depth"] - 1):
+        cf = C(cf, alpha)
+    return cf
+
+
+# func = lambda x: C_f(x) - hyps["eta"]
+#
+# alphas = list(torch.linspace(-10, 10, 1000))
+# cfs = [func(alpha) for alpha in alphas]
+# plt.plot(alphas, cfs, '-')
+# plt.show()
+#
+# print(fsolve(func, x0=np.array(1.0)))
+
+########################################
+############## TRAINING ################
+########################################
+
+
 model = MLP().to(device)
 
-# x = torch.linspace(-10, 10, 1000)
-# plt.plot(x, ShapedReLU(hyps["s_max"], hyps["s_min"])(x))
-# plt.show()
 
 criterion = nn.CrossEntropyLoss()
 #optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
@@ -101,8 +131,9 @@ optimizer = torch.optim.Adam([
     {'params': model.base_params()},
     {'params': model.trelu_params(), 'lr': 1e-2}
 ])
+optimizer = torch.optim.Adam(model.parameters())
 
-def train(dataloader, model, loss_fn, optimizer):
+def train(dataloader, model, loss_fn, optimizer, epoch, writer=None):
     size = len(dataloader.dataset)
     model.train()
     for i, (X, y) in enumerate(dataloader):
@@ -133,17 +164,21 @@ def train(dataloader, model, loss_fn, optimizer):
             print()
             print('Weight grads norm:', weight_grad_norms.item())
             print('Bias grads norm:', bias_grad_norms.item())
+            writer.add_scalar('Weights Gradient Norms', weight_grad_norms.item(), n_total_steps * epoch + i)
+            writer.add_scalar('Bias Gradient Norms', bias_grad_norms.item(), n_total_steps * epoch + i)
             print('TReLU alphas:', ["{:.5f}".format(alpha) for alpha in alphas])
             print()
 
         optimizer.zero_grad()
 
-        if i % 25 == 0:
+        if i % (2**5) == 0:
             loss, current = loss.item(), (i + 1) * len(X)
+            if writer is not None:
+                writer.add_scalar('Training Loss', loss, n_total_steps * epoch + i)
             print(f"Loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
-def test(dataloader, model, loss_fn):
+def test(dataloader, model, loss_fn, epoch, writer=None):
     size        = len(dataloader.dataset)
     num_batches = len(dataloader)
 
@@ -159,11 +194,13 @@ def test(dataloader, model, loss_fn):
     test_loss /= num_batches
     correct /= size
     print(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n\n")
+    writer.add_scalar('Test Accuracy', correct, epoch)
 
 
-for t in range(hyps["epochs"]):
-    print(f"EPOCH {t+1}\n-------------------------------")
-    train(train_dataloader, model, criterion, optimizer)
-    test(test_dataloader, model, criterion)
+for epoch in range(hyps["epochs"]):
+    print(f"EPOCH {epoch + 1}\n-------------------------------")
+    train(train_dataloader, model, criterion, optimizer, epoch, writer)
+    test(test_dataloader, model, criterion, epoch, writer)
 print("Done!")
 
+writer.close()
