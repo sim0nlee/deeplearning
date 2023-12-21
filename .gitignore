@@ -1,2 +1,4 @@
-resnet_model.pth
-logs/tiny-imagenet-200/base/events.out.tfevents.1702821743.MacBook-Pro-di-Lara.local.25126.0
+models/resnet_model.pth
+logs
+tiny-imagenet-200
+models

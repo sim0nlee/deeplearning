@@ -6,8 +6,12 @@ import torch.nn as nn
 ########################################################################################################################
 
 # set device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(device)
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
 ########################################################################################################################
 
@@ -235,7 +239,3 @@ def test_ResNet(params):
     output = model(x)
     print(output.shape)
     return model
-
-
-# architecture = 'resnet50'
-# model = test_ResNet(model_parameters[architecture])
