@@ -90,12 +90,6 @@ class ImageNetDataset(Dataset):
         return train_dataset, test_dataset, val_dataset
 
 
-<<<<<<< HEAD
-# Create DataLoader instances
-train_dataset = ImageFolder('tiny-imagenet-200/train', transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-
-=======
 root_dir = 'imagenet-object-localization-challenge/ILSVRC/Data/CLS-LOC'
 # root_dir = 'tiny-imagenet-200'
 classes: int = 1000
@@ -103,7 +97,6 @@ classes: int = 1000
 train_dataset, _, val_dataset = ImageNetDataset(root_dir, split='train', transform=transform).split_dataset()
 train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True, num_workers=30)
 test_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=30)
->>>>>>> bc3c48b (Added loader for imagenet ILSVRC full)
 
 # resnetX = (Num of channels, repetition, Bottleneck_expansion , Bottleneck_layer)
 model_parameters = {}
@@ -184,7 +177,6 @@ for epoch in range(num_epochs):
 
     # Save checkpoint
     if (epoch + 1) % checkpoint_interval == 0:
-<<<<<<< HEAD
         checkpoint_path = os.path.join(checkpoint_dir, 'resnet_model.pth')  # Overwrite the same file
         torch.save({
             'epoch': epoch + 1,
@@ -192,32 +184,6 @@ for epoch in range(num_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
         }, checkpoint_path)
-=======
-        checkpoint_path = os.path.join(checkpoint_dir, 'resnet_model.pth')
-        torch.save({'epoch': epoch + 1, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), 'loss': loss}, checkpoint_path)
-
-    # Validation (testing) loop
-    model.eval()
-    correct_predictions_test = 0
-    total_samples_test = 0
-
-    with torch.no_grad():
-        for inputs_test, labels_test in tqdm(test_loader, desc=f'Testing Epoch {epoch + 1}/{num_epochs}'):
-            inputs_test, labels_test = inputs_test.to(device), labels_test.to(device)
-
-            outputs_test = model(inputs_test)
-            _, predicted_test = torch.max(outputs_test, 1)
-
-            correct_predictions_test += (predicted_test == labels_test).sum().item()
-            total_samples_test += labels_test.size(0)
-
-    accuracy_test = correct_predictions_test / total_samples_test
-
-    # Log test accuracy to TensorBoard
-    test_writer.add_scalar('Test Accuracy', accuracy_test, epoch + 1)
-
-    print(f"Epoch {epoch + 1}/{num_epochs}, Test Accuracy: {accuracy_test}")
->>>>>>> bc3c48b (Added loader for imagenet ILSVRC full)
 
 # Close TensorBoard writers
 writer.close()
