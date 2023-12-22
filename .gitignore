@@ -1,5 +1,5 @@
-models/resnet_model.pth
 logs
 tiny-imagenet-200
-imagenet
 models
+imagenet-object-localization-challenge
+__pycache__

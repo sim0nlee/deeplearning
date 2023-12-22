@@ -1,13 +1,15 @@
+import os
+
+from PIL import Image
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import os
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import transforms
-from torchvision.datasets import ImageFolder
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-import imgaug.augmenters as iaa
+import xml.etree.ElementTree as ET
+from typing import Tuple
 
 from resnet import ResNet
 
@@ -23,28 +25,85 @@ print(f"{device=}")
 
 # Define transformations
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    transforms.RandomResizedCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+    transforms.ToTensor()
 ])
 
-# Augmentation using imgaug
-augmentation = iaa.Sequential([
-    iaa.Fliplr(0.5),         # Horizontal flip
-    iaa.Crop(percent=(0, 0.1)),  # Random crop
-    iaa.ScaleX((0.8, 1.2)),  # Scale
-    iaa.Affine(rotate=(-20, 20)),  # Rotation
-    iaa.ShearX((-16, 16)),    # Shear
-    iaa.Multiply((0.7, 1.3)),  # Brightness
-    iaa.contrast.LinearContrast((0.8, 1.2)),  # Contrast
-    iaa.Dropout(0.2),         # Dropout
-], random_order=True)
+class ImageNetDataset(Dataset):
+    def __init__(self, root_dir, split='train', transform=None):
+        self.root_dir = os.path.join(root_dir, split)
+        self.split = split
+        self.transform = transform
+        self.classes = sorted(os.listdir(self.root_dir))
+        self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}
+        self.samples = self._load_dataset()
+
+    def _load_dataset(self):
+        samples = []
+        for class_name in self.classes:
+            class_path = os.path.join(self.root_dir, class_name)
+            if not os.path.isdir(class_path):
+                continue  # Skip if not a directory
+
+            for image_name in os.listdir(class_path):
+                image_path = os.path.join(class_path, image_name)
+                samples.append((image_path, self.class_to_idx[class_name]))
+
+        return samples
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        image_path, target = self.samples[idx]
+
+        # Load image
+        image = Image.open(image_path).convert('RGB')
+
+        # Apply transformations
+        if self.transform:
+            image = self.transform(image)
+
+        return image, target
+
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+
+        # Extract bounding box coordinates
+        xmin = int(root.find(".//xmin").text)
+        ymin = int(root.find(".//ymin").text)
+        xmax = int(root.find(".//xmax").text)
+        ymax = int(root.find(".//ymax").text)
+
+        return (xmin, ymin, xmax, ymax)
+
+    def split_dataset(self, split_ratio: float = 0.8) -> Tuple[Dataset, Dataset, Dataset]:
+        # Split the dataset into train, validation, and test sets
+        train_size: int = int(0.8 * len(self))
+        val_test_size: int = len(self) - train_size
+        train_dataset, val_test_dataset = random_split(self, [train_size, val_test_size])
+        val_size = val_test_size // 2
+        val_dataset, test_dataset = random_split(val_test_dataset, [val_size, val_size])
+        return train_dataset, test_dataset, val_dataset
 
 
+<<<<<<< HEAD
 # Create DataLoader instances
 train_dataset = ImageFolder('tiny-imagenet-200/train', transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 
+=======
+root_dir = 'imagenet-object-localization-challenge/ILSVRC/Data/CLS-LOC'
+# root_dir = 'tiny-imagenet-200'
+classes: int = 1000
+# # classes: int = 200
+train_dataset, _, val_dataset = ImageNetDataset(root_dir, split='train', transform=transform).split_dataset()
+train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True, num_workers=30)
+test_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=30)
+>>>>>>> bc3c48b (Added loader for imagenet ILSVRC full)
 
 # resnetX = (Num of channels, repetition, Bottleneck_expansion , Bottleneck_layer)
 model_parameters = {}
@@ -55,7 +114,7 @@ model_parameters['resnet101'] = [[64, 128, 256, 512], [3, 4, 23, 3], 4, True]
 model_parameters['resnet152'] = [[64, 128, 256, 512], [3, 8, 36, 3], 4, True]
 
 # Create ResNet model
-model = ResNet(model_parameters['resnet50'], in_channels=3, num_classes=200).to(device)
+model = ResNet(model_parameters['resnet50'], in_channels=3, num_classes=classes).to(device)
 
 # Define loss function and optimizer
 criterion = nn.CrossEntropyLoss()
@@ -79,10 +138,10 @@ checkpoint_dir = 'checkpoints/base/resnet50'
 os.makedirs(checkpoint_dir, exist_ok=True)
 
 # Training loop
-num_epochs = 20
+num_epochs = 1
 
 # Save a checkpoint every 2 epochs
-checkpoint_interval = 2
+checkpoint_interval = 1
 
 for epoch in range(num_epochs):
     model.train()
@@ -91,19 +150,7 @@ for epoch in range(num_epochs):
     total_samples = 0
 
     for step, (inputs, labels) in enumerate(tqdm(train_loader, desc=f'Epoch {epoch + 1}/{num_epochs}')):
-        inputs, labels = inputs.to(torch.device("cpu")), labels.to(torch.device("cpu"))
-
-       # Apply imgaug augmentation
-        augmented_inputs = []
-        augmented_labels = []
-        for img, label in zip(inputs, labels):
-            img = img.permute(1, 2, 0).numpy()  # Convert to HWC format
-            img = augmentation.augment_image(img)
-            img = torch.from_numpy(img.transpose(2, 0, 1).copy())  # Convert back to CHW format
-            augmented_inputs.append(img)
-            augmented_labels.append(label)
-        augmented_inputs = torch.stack(augmented_inputs).to(device)
-        augmented_labels = torch.stack(augmented_labels).to(device)
+        augmented_inputs, augmented_labels = inputs.to(device), labels.to(device)
 
         optimizer.zero_grad()
         outputs = model(augmented_inputs)
@@ -137,6 +184,7 @@ for epoch in range(num_epochs):
 
     # Save checkpoint
     if (epoch + 1) % checkpoint_interval == 0:
+<<<<<<< HEAD
         checkpoint_path = os.path.join(checkpoint_dir, 'resnet_model.pth')  # Overwrite the same file
         torch.save({
             'epoch': epoch + 1,
@@ -144,6 +192,32 @@ for epoch in range(num_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
         }, checkpoint_path)
+=======
+        checkpoint_path = os.path.join(checkpoint_dir, 'resnet_model.pth')
+        torch.save({'epoch': epoch + 1, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), 'loss': loss}, checkpoint_path)
+
+    # Validation (testing) loop
+    model.eval()
+    correct_predictions_test = 0
+    total_samples_test = 0
+
+    with torch.no_grad():
+        for inputs_test, labels_test in tqdm(test_loader, desc=f'Testing Epoch {epoch + 1}/{num_epochs}'):
+            inputs_test, labels_test = inputs_test.to(device), labels_test.to(device)
+
+            outputs_test = model(inputs_test)
+            _, predicted_test = torch.max(outputs_test, 1)
+
+            correct_predictions_test += (predicted_test == labels_test).sum().item()
+            total_samples_test += labels_test.size(0)
+
+    accuracy_test = correct_predictions_test / total_samples_test
+
+    # Log test accuracy to TensorBoard
+    test_writer.add_scalar('Test Accuracy', accuracy_test, epoch + 1)
+
+    print(f"Epoch {epoch + 1}/{num_epochs}, Test Accuracy: {accuracy_test}")
+>>>>>>> bc3c48b (Added loader for imagenet ILSVRC full)
 
 # Close TensorBoard writers
 writer.close()
