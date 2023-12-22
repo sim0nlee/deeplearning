@@ -45,9 +45,6 @@ augmentation = iaa.Sequential([
 train_dataset = ImageFolder('tiny-imagenet-200/train', transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 
-# Create DataLoader instance for test data
-test_dataset = ImageFolder('tiny-imagenet-200/val', transform=transform)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 # resnetX = (Num of channels, repetition, Bottleneck_expansion , Bottleneck_layer)
 model_parameters = {}
@@ -71,14 +68,11 @@ scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 graph_writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/graph')
 
 # Add the model graph to TensorBoard
-dummy_input = torch.randn(1, 3, 224, 224).to(device)  # Create a dummy input with the same shape as your actual input
+dummy_input = torch.randn(1, 3, 224, 224).to(device)
 graph_writer.add_graph(model, dummy_input)
 
 # Set up TensorBoard
 writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/train')
-
-# Set up TensorBoard for test accuracy logging
-test_writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/test')
 
 # Directory to save checkpoints
 checkpoint_dir = 'checkpoints/base/resnet50'
@@ -151,30 +145,7 @@ for epoch in range(num_epochs):
             'loss': loss,
         }, checkpoint_path)
 
-    # Validation (testing) loop
-    model.eval()
-    correct_predictions_test = 0
-    total_samples_test = 0
-
-    with torch.no_grad():
-        for inputs_test, labels_test in tqdm(test_loader, desc=f'Testing Epoch {epoch + 1}/{num_epochs}'):
-            inputs_test, labels_test = inputs_test.to(device), labels_test.to(device)
-
-            outputs_test = model(inputs_test)
-            _, predicted_test = torch.max(outputs_test, 1)
-
-            correct_predictions_test += (predicted_test == labels_test).sum().item()
-            total_samples_test += labels_test.size(0)
-
-    accuracy_test = correct_predictions_test / total_samples_test
-
-    # Log test accuracy to TensorBoard
-    test_writer.add_scalar('Test Accuracy', accuracy_test, epoch + 1)
-
-    print(f"Epoch {epoch + 1}/{num_epochs}, Test Accuracy: {accuracy_test}")
-
 # Close TensorBoard writers
-test_writer.close()
 writer.close()
 graph_writer.close()
 
