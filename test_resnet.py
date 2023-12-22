@@ -62,7 +62,10 @@ model = ResNet(model_parameters['resnet50'], in_channels=3, num_classes=200).to(
 
 # Define loss function and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)  # Change optimizer to Adam
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Learning rate scheduler
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
 # Set up TensorBoard for model graph logging
 graph_writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/graph')
@@ -131,14 +134,22 @@ for epoch in range(num_epochs):
                 if 'conv' in name and 'weight' in name:
                     writer.add_histogram(name + '_grad', param.grad, epoch * len(train_loader) + step)
 
+    # Update learning rate
+    scheduler.step()
+
     average_loss = running_loss / len(train_loader)
     accuracy = correct_predictions / total_samples
     print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {average_loss}, Accuracy: {accuracy}")
 
     # Save checkpoint
     if (epoch + 1) % checkpoint_interval == 0:
-        checkpoint_path = os.path.join(checkpoint_dir, f'resnet_model_epoch_{epoch + 1}.pth')
-        torch.save(model.state_dict(), checkpoint_path)
+        checkpoint_path = os.path.join(checkpoint_dir, 'resnet_model.pth')  # Overwrite the same file
+        torch.save({
+            'epoch': epoch + 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss,
+        }, checkpoint_path)
 
     # Validation (testing) loop
     model.eval()

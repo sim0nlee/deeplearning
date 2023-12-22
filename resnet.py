@@ -1,6 +1,4 @@
 import torch
-
-# all nn libraries nn.layer, convs and loss functions
 import torch.nn as nn
 
 ########################################################################################################################

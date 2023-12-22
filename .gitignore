@@ -1,4 +1,5 @@
 models/resnet_model.pth
 logs
 tiny-imagenet-200
+imagenet
 models
