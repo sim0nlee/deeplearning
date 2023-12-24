@@ -8,10 +8,11 @@ from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-import xml.etree.ElementTree as ET
 from typing import Tuple
 
 from resnet import ResNet
+
+########################################################################################################################
 
 # Set device
 if torch.cuda.is_available():
@@ -23,14 +24,17 @@ else:
 
 print(f"{device=}")
 
-# Define transformations
-transform = transforms.Compose([
-    transforms.RandomResizedCrop(224),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(10),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
-    transforms.ToTensor()
-])
+########################################################################################################################
+
+# resnetX = (Num of channels, repetition, Bottleneck_expansion , Bottleneck_layer)
+model_parameters = {}
+model_parameters['resnet18'] = [[64, 128, 256, 512], [2, 2, 2, 2], 1, False]
+model_parameters['resnet34'] = [[64, 128, 256, 512], [3, 4, 6, 3], 1, False]
+model_parameters['resnet50'] = [[64, 128, 256, 512], [3, 4, 6, 3], 4, True]
+model_parameters['resnet101'] = [[64, 128, 256, 512], [3, 4, 23, 3], 4, True]
+model_parameters['resnet152'] = [[64, 128, 256, 512], [3, 8, 36, 3], 4, True]
+
+########################################################################################################################
 
 class ImageNetDataset(Dataset):
     def __init__(self, root_dir, split='train', transform=None):
@@ -69,73 +73,61 @@ class ImageNetDataset(Dataset):
 
         return image, target
 
-        tree = ET.parse(xml_path)
-        root = tree.getroot()
-
-        # Extract bounding box coordinates
-        xmin = int(root.find(".//xmin").text)
-        ymin = int(root.find(".//ymin").text)
-        xmax = int(root.find(".//xmax").text)
-        ymax = int(root.find(".//ymax").text)
-
-        return (xmin, ymin, xmax, ymax)
-
     def split_dataset(self, split_ratio: float = 0.8) -> Tuple[Dataset, Dataset, Dataset]:
         # Split the dataset into train, validation, and test sets
-        train_size: int = int(0.8 * len(self))
+        train_size: int = int(split_ratio * len(self))
         val_test_size: int = len(self) - train_size
         train_dataset, val_test_dataset = random_split(self, [train_size, val_test_size])
         val_size = val_test_size // 2
         val_dataset, test_dataset = random_split(val_test_dataset, [val_size, val_size])
         return train_dataset, test_dataset, val_dataset
 
+########################################################################################################################
 
+# Define transformations for data augmentation
+transform = transforms.Compose([
+    transforms.RandomResizedCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+    transforms.ToTensor()])
+
+########################################################################################################################
+
+# Dataset loading
 root_dir = 'imagenet-object-localization-challenge/ILSVRC/Data/CLS-LOC'
 # root_dir = 'tiny-imagenet-200'
 classes: int = 1000
-# # classes: int = 200
+# classes: int = 200
 train_dataset, _, val_dataset = ImageNetDataset(root_dir, split='train', transform=transform).split_dataset()
-train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True, num_workers=30)
-test_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=30)
+train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True, num_workers=30)  # batch_size=256, num_workers=30
+test_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=30)  # batch_size=256, num_workers=30
 
-# resnetX = (Num of channels, repetition, Bottleneck_expansion , Bottleneck_layer)
-model_parameters = {}
-model_parameters['resnet18'] = [[64, 128, 256, 512], [2, 2, 2, 2], 1, False]
-model_parameters['resnet34'] = [[64, 128, 256, 512], [3, 4, 6, 3], 1, False]
-model_parameters['resnet50'] = [[64, 128, 256, 512], [3, 4, 6, 3], 4, True]
-model_parameters['resnet101'] = [[64, 128, 256, 512], [3, 4, 23, 3], 4, True]
-model_parameters['resnet152'] = [[64, 128, 256, 512], [3, 8, 36, 3], 4, True]
+########################################################################################################################
 
-# Create ResNet model
-model = ResNet(model_parameters['resnet50'], in_channels=3, num_classes=classes).to(device)
-
-# Define loss function and optimizer
+model = ResNet(model_parameters['resnet50'],
+               in_channels=3,
+               num_classes=classes,
+               use_batch_norm=False,
+               shortcut_weight=None,
+               activation_name="relu").to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-# Learning rate scheduler
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
-# Set up TensorBoard for model graph logging
-graph_writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/graph')
-
-# Add the model graph to TensorBoard
+# Set up TensorBoard
+graph_writer = SummaryWriter('logs/imagenet/modified/resnet50/graph')
+writer = SummaryWriter('logs/imagenet/modified/resnet50/train')
+test_writer = SummaryWriter('logs/imagenet/modified/resnet50/test')
 dummy_input = torch.randn(1, 3, 224, 224).to(device)
 graph_writer.add_graph(model, dummy_input)
 
-# Set up TensorBoard
-writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/train')
-
-# Directory to save checkpoints
-checkpoint_dir = 'checkpoints/base/resnet50'
+# Save checkpoints
+checkpoint_dir = 'checkpoints/imagenet/modified/resnet50'
 os.makedirs(checkpoint_dir, exist_ok=True)
-
-# Training loop
-num_epochs = 1
-
-# Save a checkpoint every 2 epochs
 checkpoint_interval = 1
 
+num_epochs = 15
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -185,12 +177,32 @@ for epoch in range(num_epochs):
             'loss': loss,
         }, checkpoint_path)
 
+    # Testing loop
+    model.eval()
+    test_correct_predictions = 0
+    test_total_samples = 0
+
+    with torch.no_grad():
+        for inputs, labels in tqdm(test_loader, desc=f'Testing'):
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs, 1)
+            test_correct_predictions += (predicted == labels).sum().item()
+            test_total_samples += labels.size(0)
+
+    # Compute test accuracy
+    test_accuracy = test_correct_predictions / test_total_samples
+
+    # Log test accuracy to TensorBoard
+    test_writer.add_scalar('Test Accuracy', test_accuracy, (epoch + 1) * len(train_loader))
+
 # Close TensorBoard writers
 writer.close()
 graph_writer.close()
+test_writer.close()
 
 # Save the final trained model
 models_dir = 'models'
 os.makedirs(models_dir, exist_ok=True)
-model_save_path = os.path.join(models_dir, 'resnet50_base.pth')
+model_save_path = os.path.join(models_dir, 'resnet50_modified.pth')
 torch.save(model.state_dict(), model_save_path)
