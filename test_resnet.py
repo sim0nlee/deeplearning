@@ -119,6 +119,7 @@ scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 graph_writer = SummaryWriter('logs/imagenet/modified/resnet50/graph')
 writer = SummaryWriter('logs/imagenet/modified/resnet50/train')
 test_writer = SummaryWriter('logs/imagenet/modified/resnet50/test')
+grad_writer = SummaryWriter('logs/imagenet/modified/resnet50/grad')
 dummy_input = torch.randn(1, 3, 224, 224).to(device)
 graph_writer.add_graph(model, dummy_input)
 
@@ -158,7 +159,11 @@ for epoch in range(num_epochs):
         if step % 10 == 0:
             for name, param in model.named_parameters():
                 if 'conv' in name and 'weight' in name:
+                    # Log gradients norm
                     writer.add_histogram(name + '_grad', param.grad, epoch * len(train_loader) + step)
+                    # Calculate and log gradients norm
+                    grad_norm = torch.norm(param.grad)
+                    grad_writer.add_scalar(name + '_grad_norm', grad_norm, epoch * len(train_loader) + step)
 
     # Update learning rate
     scheduler.step()
@@ -200,6 +205,7 @@ for epoch in range(num_epochs):
 writer.close()
 graph_writer.close()
 test_writer.close()
+grad_writer.close()
 
 # Save the final trained model
 models_dir = 'models'
