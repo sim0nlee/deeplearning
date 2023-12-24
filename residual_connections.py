@@ -3,6 +3,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
+from torch.utils.tensorboard import SummaryWriter
 from torch.nn import functional as F
 
 import numpy as np
@@ -27,7 +28,8 @@ hyps = {"depth"      : 100,
         "width"      : 100,
         "batch_size" : 256,
         "lr"         : 1e0,
-        "epochs"     : 5}
+        "epochs"     : 5,
+        "n_reps"     : 50}
 
 
 beta_ini = 1.0
@@ -37,6 +39,8 @@ global_beta = True
 # Create data loaders.
 train_dataloader = DataLoader(training_data, batch_size=hyps["batch_size"], shuffle=True)
 test_dataloader = DataLoader(test_data, batch_size=hyps["batch_size"])
+
+n_total_steps = len(train_dataloader)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -86,9 +90,13 @@ print(model)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
+# optimizer = torch.optim.Adam([
+#     {'params': model.base_params()},
+#     {'params': model.trelu_params(), 'lr': 1e-2}
+# ])
 
 
-def train(dataloader, model, loss_fn, optimizer):
+def train(dataloader, model, loss_fn, optimizer, epoch, writer=None):
     size = len(dataloader.dataset)
     model.train()
     for i, (X, y) in enumerate(dataloader):
@@ -102,7 +110,7 @@ def train(dataloader, model, loss_fn, optimizer):
         loss.backward()
         optimizer.step()
 
-        if i % 100 == 0:
+        if writer is not None and i % 100 == 0:
             weight_grads = []
             bias_grads = []
             for module in model.net:
@@ -111,23 +119,26 @@ def train(dataloader, model, loss_fn, optimizer):
                     bias_grads.append(module.bias.grad.ravel())
             weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
             bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
-            print()
-            print('Weight grads norm:', weight_grad_norms)
-            print('Bias grads norm:', bias_grad_norms)
-            if global_beta:
-                print('Global Beta:', model.beta.item())
-            else:
-                print('Betas:', [b.item() for b in model.beta])
-            print()
+            writer.add_scalar('Weight grads norm', weight_grad_norms, epoch * n_total_steps + i)
+            writer.add_scalar('Bias grads norm', bias_grad_norms, epoch * n_total_steps + i)
+            # print()
+            # print('Weight grads norm:', weight_grad_norms)
+            # print('Bias grads norm:', bias_grad_norms)
+            # if global_beta:
+            #     print('Global Beta:', model.beta.item())
+            # else:
+            #     print('Betas:', [b.item() for b in model.beta])
+            # print()
 
         optimizer.zero_grad()
 
         if i % 25 == 0:
             loss, current = loss.item(), (i + 1) * len(X)
-            print(f"Loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            writer.add_scalar('Train loss', loss, epoch * n_total_steps + i)
+            # print(f"Loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
-def test(dataloader, model, loss_fn):
+def test(dataloader, model, loss_fn, epoch, writer=None):
     size        = len(dataloader.dataset)
     num_batches = len(dataloader)
 
@@ -142,11 +153,15 @@ def test(dataloader, model, loss_fn):
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
     test_loss /= num_batches
     correct /= size
-    print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+    writer.add_scalar('Test Accuracy', 100*correct, epoch * n_total_steps)
+    writer.add_scalar('Test Loss', test_loss, epoch * n_total_steps)
+    #print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 
-for t in range(hyps["epochs"]):
-    print(f"Epoch {t+1}\n-------------------------------")
-    train(train_dataloader, model, criterion, optimizer)
-    test(test_dataloader, model, criterion)
-print("Done!")
+for i in range(hyps["n_reps"]):
+    writer = SummaryWriter(f"runs/mnist/residual/global_beta/depth_{hyps['depth']}_run_{i}")
+    for t in range(hyps["epochs"]):
+        #print(f"Epoch {t+1}\n-------------------------------")
+        train(train_dataloader, model, criterion, optimizer, t,  writer=writer)
+        test(test_dataloader, model, criterion, t, writer=writer)
+    print("Done!")
