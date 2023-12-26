@@ -109,22 +109,22 @@ model = ResNet(model_parameters['resnet50'],
                in_channels=3,
                num_classes=classes,
                use_batch_norm=False,
-               shortcut_weight=None,
+               shortcut_weight=0.8,
                activation_name="relu").to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
 # Set up TensorBoard
-graph_writer = SummaryWriter('logs/imagenet/modified/resnet50/graph')
-writer = SummaryWriter('logs/imagenet/modified/resnet50/train')
-test_writer = SummaryWriter('logs/imagenet/modified/resnet50/test')
-grad_writer = SummaryWriter('logs/imagenet/modified/resnet50/grad')
+graph_writer = SummaryWriter('logs/imagenet/vanilla_with_shortcut/resnet50/graph')
+writer = SummaryWriter('logs/imagenet/vanilla_with_shortcut/resnet50/train')
+test_writer = SummaryWriter('logs/imagenet/vanilla_with_shortcut/resnet50/test')
+grad_writer = SummaryWriter('logs/imagenet/vanilla_with_shortcut/resnet50/grad')
 dummy_input = torch.randn(1, 3, 224, 224).to(device)
 graph_writer.add_graph(model, dummy_input)
 
 # Save checkpoints
-checkpoint_dir = 'checkpoints/imagenet/modified/resnet50'
+checkpoint_dir = 'checkpoints/imagenet/vanilla_with_shortcut/resnet50'
 os.makedirs(checkpoint_dir, exist_ok=True)
 checkpoint_interval = 1
 
@@ -210,5 +210,5 @@ grad_writer.close()
 # Save the final trained model
 models_dir = 'models'
 os.makedirs(models_dir, exist_ok=True)
-model_save_path = os.path.join(models_dir, 'resnet50_modified.pth')
+model_save_path = os.path.join(models_dir, 'resnet50_vanilla_with_shortcut.pth')
 torch.save(model.state_dict(), model_save_path)
