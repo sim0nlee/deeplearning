@@ -5,6 +5,8 @@ import torch.nn as nn
 
 from typing import Optional
 
+from activation import TReLU
+
 ########################################################################################################################
 
 # set device
@@ -228,6 +230,8 @@ class ResNet(nn.Module):
             self.activation = nn.ReLU()
         elif self.activation_name == "leaky_relu":
             self.activation = nn.LeakyReLU(negative_slope=0.01)
+        elif self.activation_name == "trelu":
+            self.activation = TReLU(1.0, trainable=True, device=self.device)
         else:
             raise ValueError("Invalid activation name!")
 
