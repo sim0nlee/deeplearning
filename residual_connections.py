@@ -81,20 +81,6 @@ class MLP(nn.Module):
         return logits
 
 
-model = MLP().to(device)
-print(model)
-
-# x = torch.linspace(-10, 10, 1000)
-# plt.plot(x, ShapedReLU(hyps["s_max"], hyps["s_min"])(x))
-# plt.show()
-
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
-# optimizer = torch.optim.Adam([
-#     {'params': model.base_params()},
-#     {'params': model.trelu_params(), 'lr': 1e-2}
-# ])
-
 
 def train(dataloader, model, loss_fn, optimizer, epoch, writer=None):
     size = len(dataloader.dataset)
@@ -135,7 +121,7 @@ def train(dataloader, model, loss_fn, optimizer, epoch, writer=None):
         if i % 25 == 0:
             loss, current = loss.item(), (i + 1) * len(X)
             writer.add_scalar('Train loss', loss, epoch * n_total_steps + i)
-            # print(f"Loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            print(f"Loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
 def test(dataloader, model, loss_fn, epoch, writer=None):
@@ -159,7 +145,18 @@ def test(dataloader, model, loss_fn, epoch, writer=None):
 
 
 for i in range(hyps["n_reps"]):
-    writer = SummaryWriter(f"runs/mnist/residual/global_beta/depth_{hyps['depth']}_run_{i}")
+
+    model = MLP().to(device)
+    # print(model)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
+    # optimizer = torch.optim.Adam([
+    #     {'params': model.base_params()},
+    #     {'params': model.trelu_params(), 'lr': 1e-2}
+    # ])
+
+    writer = SummaryWriter(f"runs/mnist/residual/adam/global_beta/depth_{hyps['depth']}_run_{i}")
     for t in range(hyps["epochs"]):
         #print(f"Epoch {t+1}\n-------------------------------")
         train(train_dataloader, model, criterion, optimizer, t,  writer=writer)
