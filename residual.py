@@ -3,6 +3,8 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
+from torch.utils.tensorboard import SummaryWriter
+
 
 import numpy as np
 
@@ -54,7 +56,7 @@ class Residual(nn.Module):
 class MLP(nn.Module):
     def __init__(self):
         super().__init__()
-
+        
         layers = []
 
         for d in range(hyperparams["depth"]):
@@ -82,7 +84,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=hyperparams["lr"])
 
 
-def train(dataloader, model, loss_fn, optimizer):
+def train(dataloader, model, loss_fn, optimizer, epoch):
     size = len(dataloader.dataset)
     model.train()
     for i, (X, y) in enumerate(dataloader):
@@ -105,6 +107,8 @@ def train(dataloader, model, loss_fn, optimizer):
                     bias_grads.append(module.bias.grad.ravel())
             weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
             bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
+
+            writer.add_scalars("Beta", model.beta, epoch)
             print()
             print('Weight grads norm:', weight_grad_norms)
             print('Bias grads norm:', bias_grad_norms)
@@ -134,10 +138,13 @@ def test(dataloader, model, loss_fn):
     correct /= size
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
+writer = SummaryWriter()
 
 for t in range(hyperparams["epochs"]):
     print(f"Epoch {t+1}\n-------------------------------")
-    train(train_dataloader, model, criterion, optimizer)
+    train(train_dataloader, model, criterion, optimizer, t)
     test(test_dataloader, model, criterion)
 print("Done!")
+writer.close()
+
 
