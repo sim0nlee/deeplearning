@@ -231,7 +231,7 @@ class ResNet(nn.Module):
         elif self.activation_name == "leaky_relu":
             self.activation = nn.LeakyReLU(negative_slope=0.01)
         elif self.activation_name == "trelu":
-            self.activation = TReLU(1.0, trainable=True, device=self.device)
+            self.activation = TReLU(1.0, trainable=True, device=device)
         else:
             raise ValueError("Invalid activation name!")
 

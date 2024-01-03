@@ -39,7 +39,7 @@ def optimal_trelu_params():
     def C_f(alpha, c=0):
         """Computes the composition of the C maps of the TReLU function with given alpha starting from c=0"""
         cf = C(c, alpha)
-        for _ in range(50):
+        for _ in range(101):
             cf = C(cf, alpha)
         return cf
 

@@ -3,3 +3,4 @@ tiny-imagenet-200
 models
 imagenet-object-localization-challenge
 __pycache__
+checkpoints
