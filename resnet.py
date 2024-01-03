@@ -1,11 +1,8 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 
 from activation import TReLU
-
-########################################################################################################################
 
 # set device
 if torch.cuda.is_available():
@@ -15,7 +12,6 @@ elif torch.backends.mps.is_available():
 else:
     device = torch.device("cpu")
 
-########################################################################################################################
 
 # resnetX = (Num of channels, repetition, Bottleneck_expansion , Bottleneck_layer)
 model_parameters = {}
@@ -25,7 +21,6 @@ model_parameters['resnet50'] = [[64, 128, 256, 512], [3, 4, 6, 3], 4, True]
 model_parameters['resnet101'] = [[64, 128, 256, 512], [3, 4, 23, 3], 4, True]
 model_parameters['resnet152'] = [[64, 128, 256, 512], [3, 8, 36, 3], 4, True]
 
-########################################################################################################################
 
 class Bottleneck(nn.Module):
 
@@ -44,8 +39,10 @@ class Bottleneck(nn.Module):
             intermediate_channels (int) : number of channels to 3x3 conv
             expansion (int) : factor by which the input #channels are increased
             stride (int) : stride applied in the 3x3 conv. 2 for first Bottleneck of the block and 1 for remaining
-            beta_init : initialization value for beta
-            beta_is_trainable : true if beta is trainable, false otherwise
+            depth (int) : total number of bottlenecks
+            activation (torch.nn.Module): activation function
+            normalize (bool) : True if batch_norm is used, otherwise False
+            residual_connection (bool) : True if a residual connection is used, otherwise False
 
         """
 
@@ -199,8 +196,6 @@ class Bottleneck(nn.Module):
 
         return x
 
-########################################################################################################################
-
 class ResNet(nn.Module):
 
     def __init__(self,
@@ -227,6 +222,13 @@ class ResNet(nn.Module):
             in_channels (int) : image channels (3)
             num_classes (int) : output #classes
             activation (str) : 'relu' or 'trelu'
+            alpha_init (float) : initialization value for alpha (trainable parameter for trelu)
+            train_trelu (bool) : True if TReLU is trainable, otherwise False
+            residual_connections (bool) : True if a residual connection is used, otherwise False
+            beta_init (float) : initialization value for alpha (trainable parameter for residual connections)
+            beta_is_trainable (bool) : True if beta is trainable, otherwise False
+            beta_is_global (bool) :True if beta is global, False if there is a different beta per bottleneck
+            normalize (bool) : True if batch_norm is used, otherwise False
 
         """
         super(ResNet, self).__init__()
@@ -284,7 +286,8 @@ class ResNet(nn.Module):
                 self.beta = nn.ParameterList(
                     [nn.Parameter(torch.tensor(beta_init), requires_grad=beta_is_trainable) for _ in range(self.depth)])
 
-        layers.append(nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False))
+        layers.append(
+            nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False))
         if self.normalize:
             layers.append(nn.BatchNorm2d(64))
 
@@ -353,10 +356,9 @@ class ResNet(nn.Module):
             expansion : factor by which intermediate_channels are multiplied to create the output channels
             is_Bottleneck : status if Bottleneck in required
             stride : stride to be used in the first Bottleneck conv 3x3
-
-        Attributes:
-            Sequence of Bottleneck layers
-
+            depth (int) : total number of bottlenecks
+            activation (torch.nn.Module): activation function
+            normalize (bool) : True if batch_norm is used, otherwise False
         """
         self.depth = depth
 
@@ -385,7 +387,6 @@ class ResNet(nn.Module):
                     params.append(param)
         return params
 
-
     def trelu_params(self):
         params = []
         for l in self.net:
@@ -397,14 +398,13 @@ class ResNet(nn.Module):
         return params
 
     def forward(self, x):
-        beta_idx = 0        # indexing the residual connection (one for each bottleck)
+        beta_idx = 0  # indexing the residual connection (one for each bottleneck)
 
         for module in self.net:
             if self.residual_connections and isinstance(module, Bottleneck):
                 beta = self.beta if self.beta_is_global else self.beta[beta_idx]
                 beta_idx += 1
                 x = module(x, beta=beta, depth_scaler=np.sqrt(self.depth))
-
             else:
                 x = module(x)
 
