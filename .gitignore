@@ -3,3 +3,6 @@ logs
 tiny-imagenet-200
 imagenet
 models
+tiny-imagenet-200.zip
+imagenet-object-localization-challenge/
+__pycache__/

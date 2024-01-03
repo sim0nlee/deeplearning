@@ -25,7 +25,7 @@ model_parameters['resnet152'] = [[64, 128, 256, 512], [3, 8, 36, 3], 4, True]
 class Bottleneck(nn.Module):
 
     def __init__(self, in_channels, intermediate_channels, expansion, is_Bottleneck, stride, depth, activation,
-                 normalize, residual_connection):
+                 normalize, scale_residual_connections):
 
         """
         Creates a Bottleneck with conv 1x1->3x3->1x1 layers.
@@ -42,7 +42,7 @@ class Bottleneck(nn.Module):
             depth (int) : total number of bottlenecks
             activation (torch.nn.Module): activation function
             normalize (bool) : True if batch_norm is used, otherwise False
-            residual_connection (bool) : True if a residual connection is used, otherwise False
+            scale_residual_connections (bool) : True if residual connections is scaled, otherwise False
 
         """
 
@@ -55,7 +55,7 @@ class Bottleneck(nn.Module):
         self.depth = depth
         self.activation = activation
         self.normalize = normalize
-        self.residual_connection = residual_connection
+        self.scale_residual_connections = scale_residual_connections
 
         # i.e. if dim(x) == dim(F) => Identity function
         if self.in_channels == self.intermediate_channels * self.expansion:
@@ -63,9 +63,7 @@ class Bottleneck(nn.Module):
         else:
             self.identity = False
             projection_layer = []
-            projection_layer.append(
-                nn.Conv2d(in_channels=self.in_channels, out_channels=self.intermediate_channels * self.expansion,
-                          kernel_size=1, stride=stride, padding=0, bias=False))
+            projection_layer.append(nn.Conv2d(in_channels=self.in_channels, out_channels=self.intermediate_channels * self.expansion, kernel_size=1, stride=stride, padding=0, bias=False))
             if self.normalize:
                 projection_layer.append(nn.BatchNorm2d(self.intermediate_channels * self.expansion))
             # Only conv->BN
@@ -75,31 +73,25 @@ class Bottleneck(nn.Module):
         if self.is_Bottleneck:
             # bottleneck
             # 1x1
-            self.conv1_1x1 = nn.Conv2d(in_channels=self.in_channels, out_channels=self.intermediate_channels,
-                                       kernel_size=1, stride=1, padding=0, bias=False)
+            self.conv1_1x1 = nn.Conv2d(in_channels=self.in_channels, out_channels=self.intermediate_channels, kernel_size=1, stride=1, padding=0, bias=False)
             self.batchnorm1 = nn.BatchNorm2d(self.intermediate_channels)
 
             # 3x3
-            self.conv2_3x3 = nn.Conv2d(in_channels=self.intermediate_channels, out_channels=self.intermediate_channels,
-                                       kernel_size=3, stride=stride, padding=1, bias=False)
+            self.conv2_3x3 = nn.Conv2d(in_channels=self.intermediate_channels, out_channels=self.intermediate_channels, kernel_size=3, stride=stride, padding=1, bias=False)
             self.batchnorm2 = nn.BatchNorm2d(self.intermediate_channels)
 
             # 1x1
-            self.conv3_1x1 = nn.Conv2d(in_channels=self.intermediate_channels,
-                                       out_channels=self.intermediate_channels * self.expansion, kernel_size=1,
-                                       stride=1, padding=0, bias=False)
+            self.conv3_1x1 = nn.Conv2d(in_channels=self.intermediate_channels, out_channels=self.intermediate_channels * self.expansion, kernel_size=1, stride=1, padding=0, bias=False)
             self.batchnorm3 = nn.BatchNorm2d(self.intermediate_channels * self.expansion)
 
         else:
             # basicblock
             # 3x3
-            self.conv1_3x3 = nn.Conv2d(in_channels=self.in_channels, out_channels=self.intermediate_channels,
-                                       kernel_size=3, stride=stride, padding=1, bias=False)
+            self.conv1_3x3 = nn.Conv2d(in_channels=self.in_channels, out_channels=self.intermediate_channels, kernel_size=3, stride=stride, padding=1, bias=False)
             self.batchnorm1 = nn.BatchNorm2d(self.intermediate_channels)
 
             # 3x3
-            self.conv2_3x3 = nn.Conv2d(in_channels=self.intermediate_channels, out_channels=self.intermediate_channels,
-                                       kernel_size=3, stride=1, padding=1, bias=False)
+            self.conv2_3x3 = nn.Conv2d(in_channels=self.intermediate_channels, out_channels=self.intermediate_channels, kernel_size=3, stride=1, padding=1, bias=False)
             self.batchnorm2 = nn.BatchNorm2d(self.intermediate_channels)
 
     def base_params(self):
@@ -183,13 +175,14 @@ class Bottleneck(nn.Module):
                 x = self.conv2_3x3(x)
 
         # scaling with beta for the residual connection
-        if self.residual_connection:
+        if self.scale_residual_connections:
             x = x * beta / np.sqrt(self.depth)
-            # identity or projected mapping
-            if self.identity:
-                x += in_x
-            else:
-                x += self.projection(in_x)
+
+        # identity or projected mapping
+        if self.identity:
+            x += in_x
+        else:
+            x += self.projection(in_x)
 
         # final activation
         x = self.activation(x)
@@ -205,9 +198,9 @@ class ResNet(nn.Module):
                  activation,
                  alpha_init=1.0,
                  train_trelu=True,
-                 residual_connections=True,
+                 scale_residual_connections=False,
                  beta_init=0.5,
-                 beta_is_trainable=True,
+                 beta_is_trainable=False,
                  beta_is_global=False,
                  normalize=True):
 
@@ -224,7 +217,7 @@ class ResNet(nn.Module):
             activation (str) : 'relu' or 'trelu'
             alpha_init (float) : initialization value for alpha (trainable parameter for trelu)
             train_trelu (bool) : True if TReLU is trainable, otherwise False
-            residual_connections (bool) : True if a residual connection is used, otherwise False
+            scale_residual_connections (bool) : True if residual connections are scaled, otherwise False
             beta_init (float) : initialization value for alpha (trainable parameter for residual connections)
             beta_is_trainable (bool) : True if beta is trainable, otherwise False
             beta_is_global (bool) :True if beta is global, False if there is a different beta per bottleneck
@@ -246,8 +239,8 @@ class ResNet(nn.Module):
         elif activation == "relu":
             print("ReLU activation")
 
-        if residual_connections:
-            print("Residual connections on.")
+        if scale_residual_connections:
+            print("Residual connections scaled.")
             print(f"Residual Connections Beta Initialization: {beta_init}")
             if beta_is_trainable:
                 print("Beta is trainable.")
@@ -256,7 +249,7 @@ class ResNet(nn.Module):
                 else:
                     print("Beta is per layer.")
         else:
-            print("Residual connections off.")
+            print("Residual connections not scaled.")
 
         if normalize:
             print("Batch normalization on.")
@@ -272,14 +265,14 @@ class ResNet(nn.Module):
         self.is_Bottleneck = resnet_parameters[3]
         self.device = device
         self.beta_is_global = beta_is_global
-        self.residual_connections = residual_connections
+        self.scale_residual_connections = scale_residual_connections
         self.normalize = normalize
         self.depth = sum(self.repeatition_list)
 
         layers = []
 
         self.beta = None
-        if residual_connections:
+        if self.scale_residual_connections:
             if beta_is_global:
                 self.beta = nn.Parameter(torch.tensor(beta_init), requires_grad=beta_is_trainable)
             else:
@@ -367,13 +360,13 @@ class ResNet(nn.Module):
         layers.append(
             Bottleneck(in_channels=in_channels, intermediate_channels=intermediate_channels, expansion=expansion,
                        is_Bottleneck=is_Bottleneck, stride=stride, depth=self.depth, activation=activation,
-                       normalize=normalize, residual_connection=self.residual_connections))
+                       normalize=normalize, scale_residual_connections=self.scale_residual_connections))
 
         for num in range(1, num_repeat):
             layers.append(
                 Bottleneck(in_channels=intermediate_channels * expansion, intermediate_channels=intermediate_channels,
                            expansion=expansion, is_Bottleneck=is_Bottleneck, stride=1, depth=self.depth,
-                           activation=activation, normalize=normalize, residual_connection=self.residual_connections))
+                           activation=activation, normalize=normalize, scale_residual_connections=self.scale_residual_connections))
 
         return nn.Sequential(*layers)
 
@@ -401,10 +394,10 @@ class ResNet(nn.Module):
         beta_idx = 0  # indexing the residual connection (one for each bottleneck)
 
         for module in self.net:
-            if self.residual_connections and isinstance(module, Bottleneck):
+            if self.scale_residual_connections and isinstance(module, Bottleneck):
                 beta = self.beta if self.beta_is_global else self.beta[beta_idx]
                 beta_idx += 1
-                x = module(x, beta=beta, depth_scaler=np.sqrt(self.depth))
+                x = module(x, beta=beta)
             else:
                 x = module(x)
 
