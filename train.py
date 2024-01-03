@@ -1,14 +1,13 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import os
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-import imgaug.augmenters as iaa
 
+import hyperparameters as hyps
 from resnet import ResNet
 
 # Set device
@@ -21,51 +20,59 @@ else:
 
 print(f"{device=}")
 
+########################################################################################################################
+
 # Define transformations
-transform = transforms.Compose([
+train_transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomResizedCrop(224),
+    transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+    transforms.RandomRotation(20),
+    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+test_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# Augmentation using imgaug
-augmentation = iaa.Sequential([
-    iaa.Fliplr(0.5),         # Horizontal flip
-    iaa.Crop(percent=(0, 0.1)),  # Random crop
-    iaa.ScaleX((0.8, 1.2)),  # Scale
-    iaa.Affine(rotate=(-20, 20)),  # Rotation
-    iaa.ShearX((-16, 16)),    # Shear
-    iaa.Multiply((0.7, 1.3)),  # Brightness
-    iaa.contrast.LinearContrast((0.8, 1.2)),  # Contrast
-    iaa.Dropout(0.2),         # Dropout
-], random_order=True)
-
+########################################################################################################################
 
 # Create DataLoader instances
-train_dataset = ImageFolder('tiny-imagenet-200/train', transform=transform)
+train_dataset = ImageFolder('tiny-imagenet-200/train', transform=train_transform)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 
 # Create DataLoader instance for test data
-test_dataset = ImageFolder('tiny-imagenet-200/val', transform=transform)
+test_dataset = ImageFolder('tiny-imagenet-200/val', transform=test_transform)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
-# resnetX = (Num of channels, repetition, Bottleneck_expansion , Bottleneck_layer)
-model_parameters = {}
-model_parameters['resnet18'] = [[64, 128, 256, 512], [2, 2, 2, 2], 1, False]
-model_parameters['resnet34'] = [[64, 128, 256, 512], [3, 4, 6, 3], 1, False]
-model_parameters['resnet50'] = [[64, 128, 256, 512], [3, 4, 6, 3], 4, True]
-model_parameters['resnet101'] = [[64, 128, 256, 512], [3, 4, 23, 3], 4, True]
-model_parameters['resnet152'] = [[64, 128, 256, 512], [3, 8, 36, 3], 4, True]
+########################################################################################################################
 
 # Create ResNet model
-model = ResNet(model_parameters['resnet50'], in_channels=3, num_classes=200).to(device)
+model = ResNet(resnet_variant='resnet18',
+               in_channels=3,
+               num_classes=200,
+               activation="trelu",
+               alpha_init=1.0,
+               train_trelu=False,
+               residual_connections=False,
+               beta_init=0.5,
+               beta_is_trainable=True,
+               beta_is_global=False,
+               normalize=False).to(device)
 
 # Define loss function and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam([
+    {'params': model.base_params()},
+    *([{'params': model.beta, 'lr': hyps.adam_beta_lr}] if model.beta is not None else []),
+    {'params': model.trelu_params(), 'lr': hyps.adam_alpha_lr}
+])
 
-# Learning rate scheduler
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+
 
 # Set up TensorBoard for model graph logging
 graph_writer = SummaryWriter('logs/tiny-imagenet-200/base/resnet50/graph')
@@ -85,11 +92,8 @@ checkpoint_dir = 'checkpoints/base/resnet50'
 os.makedirs(checkpoint_dir, exist_ok=True)
 
 # Training loop
-num_epochs = 20
-
-# Save a checkpoint every 2 epochs
-checkpoint_interval = 2
-
+num_epochs = 15
+checkpoint_interval = 1
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -97,23 +101,11 @@ for epoch in range(num_epochs):
     total_samples = 0
 
     for step, (inputs, labels) in enumerate(tqdm(train_loader, desc=f'Epoch {epoch + 1}/{num_epochs}')):
-        inputs, labels = inputs.to(torch.device("cpu")), labels.to(torch.device("cpu"))
-
-       # Apply imgaug augmentation
-        augmented_inputs = []
-        augmented_labels = []
-        for img, label in zip(inputs, labels):
-            img = img.permute(1, 2, 0).numpy()  # Convert to HWC format
-            img = augmentation.augment_image(img)
-            img = torch.from_numpy(img.transpose(2, 0, 1).copy())  # Convert back to CHW format
-            augmented_inputs.append(img)
-            augmented_labels.append(label)
-        augmented_inputs = torch.stack(augmented_inputs).to(device)
-        augmented_labels = torch.stack(augmented_labels).to(device)
+        inputs, labels = inputs.to(device), labels.to(device)
 
         optimizer.zero_grad()
-        outputs = model(augmented_inputs)
-        loss = criterion(outputs, augmented_labels)  # Use augmented labels in the loss calculation
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
 
@@ -121,8 +113,8 @@ for epoch in range(num_epochs):
 
         # Compute accuracy
         _, predicted = torch.max(outputs, 1)
-        correct_predictions += (predicted == augmented_labels).sum().item()  # Use augmented labels for comparison
-        total_samples += augmented_labels.size(0)
+        correct_predictions += (predicted == labels).sum().item()
+        total_samples += labels.size(0)
 
         # Log training loss and accuracy to TensorBoard
         writer.add_scalar('Training Loss', loss.item(), epoch * len(train_loader) + step)
@@ -133,9 +125,6 @@ for epoch in range(num_epochs):
             for name, param in model.named_parameters():
                 if 'conv' in name and 'weight' in name:
                     writer.add_histogram(name + '_grad', param.grad, epoch * len(train_loader) + step)
-
-    # Update learning rate
-    scheduler.step()
 
     average_loss = running_loss / len(train_loader)
     accuracy = correct_predictions / total_samples

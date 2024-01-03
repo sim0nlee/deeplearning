@@ -187,10 +187,7 @@ for depth in hyps["depth"]:
     # writer_sReLU_train = SummaryWriter(f"runs/mnist/without_bn/with_shapedReLu_train/depth_{depth}")
 
     for t in range(hyps["epochs"]):
-        optimizer = torch.optim.SGD(model.parameters(), lr=hyps["lr"])
-        # optimizer_bn = torch.optim.SGD(model_bn.parameters(), lr=hyps["lr"])
-        optimizer_sReLu = torch.optim.SGD(model_sReLU.parameters(), lr=hyps["lr"])
-        # optimizer_sReLu_train = torch.optim.SGD(model_sReLU_train.parameters(), lr=hyps["lr"])
+        optimizer = torch.optim.Adam(model.parameters(), lr=hyps["lr"])
 
         writer.add_graph(model, example_data)
         # writer_bn.add_graph(model_bn, example_data)
@@ -204,7 +201,7 @@ for depth in hyps["depth"]:
         # train(train_dataloader, model_bn, criterion, optimizer_bn, t, writer=writer_bn)
         # test(test_dataloader, model_bn, criterion)
 
-        train(train_dataloader, model_sReLU, criterion, optimizer_sReLu, t, writer=writer_sReLU)
+        train(train_dataloader, model_sReLU, criterion, optimizer, t, writer=writer_sReLU)
         test(test_dataloader, model_sReLU, criterion)
 
         # train(train_dataloader, model_sReLU_train, criterion, optimizer_sReLu_train, t, writer=writer_sReLU_train)
