@@ -1,71 +1,97 @@
 import torch
-from torch import nn
 
-import hyperparameters as hyps
 from activation import TReLU
 
 
-class MNIST_MLP(nn.Module):
+class MNIST_MLP(torch.nn.Module):
     def __init__(self,
+                 device,
                  depth,
                  width,
                  activation,
                  alpha_init=1.0,
-                 device="cpu",
                  trelu_is_trainable=False,
                  normalize=False):
         super().__init__()
 
-        print(f"Network Depth: {depth}, Network Width: {width}.")
-        print(f"Using {activation} activation")
-        if activation == "trelu":
-            print(f"TReLU alpha initialization: {alpha_init}.")
-            if trelu_is_trainable:
-                print("TReLU is trainable.")
-        if normalize:
-            print("Batch normalization on")
-        print()
+        if activation not in ["relu", "lrelu", "trelu"]:
+            raise Exception("Invalid Activation")
 
         self.device = device
+        self.depth = depth
+        self.width = width
+        self.activation = activation
+        self.alpha_init = alpha_init
+        self.trelu_is_trainable = trelu_is_trainable
+        self.normalize = normalize
 
         layers = []
 
         for d in range(depth):
-            if d == 0:  # Input layer
-                layers.append(nn.Linear(28 * 28, width))
-            elif d == depth - 1:  # Last layer
-                layers.append(nn.Linear(width, 10))
-            else:  # Hidden layers
-                layers.append(nn.Linear(width, width))
+            # Input layer
+            if d == 0:
+                layers.append(torch.nn.Linear(28 * 28, width))
+            # Last layer
+            elif d == depth - 1:
+                layers.append(torch.nn.Linear(width, 10))
+            # Hidden layers
+            else:
+                layer = torch.nn.Linear(width, width)
+                # Custom weight and bias initialization
+                torch.nn.init.normal_(layer.weight, 0, 1 / width)
+                torch.nn.init.constant_(layer.bias, 0)
+                layers.append(torch.nn.Linear(width, width))
                 if normalize:
-                    layers.append(nn.BatchNorm1d(width))
-            if d < depth - 1:  # Activation functions after all layers but the last
+                    layers.append(torch.nn.BatchNorm1d(width))
+            # Activation functions after all layers but the last
+            if d < depth - 1:
                 if activation == "relu":
-                    layers.append(nn.ReLU())
+                    layers.append(torch.nn.ReLU())
+                elif activation == "lrelu":
+                    layers.append(torch.nn.LeakyReLU())
                 elif activation == "trelu":
                     layers.append(TReLU(alpha_init, trainable=trelu_is_trainable, device=self.device))
 
-        self.net = nn.Sequential(*layers)
+        self.net = torch.nn.Sequential(*layers)
+
+        self.print_model_info()
 
     def base_params(self):
+        """Returns a list of the linear layer and batch normalization layer parameters"""
         params = []
-        for l in self.net:
-            if isinstance(l, nn.Linear) or isinstance(l, nn.BatchNorm1d):
-                for param in l.parameters():
+        for layer in self.net:
+            if isinstance(layer, torch.nn.Linear) or isinstance(layer, torch.nn.BatchNorm1d):
+                for param in layer.parameters():
                     params.append(param)
         return params
 
     def trelu_params(self):
+        """Returns a list of the alpha parameters of each TReLU layer of the network, if present"""
         params = []
-        for l in self.net:
-            if isinstance(l, TReLU):
-                for param in l.parameters():
+        for layer in self.net:
+            if isinstance(layer, TReLU):
+                for param in layer.parameters():
                     params.append(param)
         return params
 
     def forward(self, x):
-        x = nn.Flatten()(x)
+        x = torch.nn.Flatten()(x)
         for module in self.net:
             x = x.type(torch.float32)
             x = module(x)
         return x
+
+    def print_model_info(self):
+        print(f"Network Depth: {self.depth}, Network Width: {self.width}.")
+        print(f"Using {self.activation} activation")
+        if self.activation == "trelu":
+            print(f"TReLU alpha initialization: {self.alpha_init}.")
+            if self.trelu_is_trainable:
+                print("TReLU is trainable.")
+            else:
+                print("TReLU is not trainable")
+        if self.normalize:
+            print("Batch normalization on")
+        else:
+            print("Batch normalization off")
+        print()
