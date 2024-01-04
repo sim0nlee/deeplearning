@@ -158,16 +158,23 @@ class MNIST_MLP(nn.Module):
         return params
 
 
-    def forward(self, x):
+    def forward(self, x, shallow=False):
         x = nn.Flatten()(x)
 
         beta_idx = 0
+
+        if self.residual_connections and not self.beta_is_global and shallow:
+            betas_tensor = torch.cat([b.view(-1) for b in self.beta])
+            beta_threshold = 0.1 * torch.max(betas_tensor)
+            n_skipped_layers = torch.sum(betas_tensor <= beta_threshold)
+            print(f"Shallow mode: Skipping {n_skipped_layers} layers with beta <= {beta_threshold}.")
 
         for module in self.net:
             if self.residual_connections and isinstance(module, HiddenBlock):
                 beta = self.beta if self.beta_is_global else self.beta[beta_idx]
                 beta_idx += 1
-                x = module(x, beta=beta, depth_scaler=np.sqrt(self.depth))
+                if not shallow or beta > beta_threshold:
+                    x = module(x, beta=beta, depth_scaler=np.sqrt(self.depth))
 
             else:
                 x = module(x)

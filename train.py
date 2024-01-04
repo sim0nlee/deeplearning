@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 from activation import TReLU
 from model import HiddenBlock
@@ -32,8 +33,10 @@ def write_grads_and_alphas(model, cur_epoch, cur_iter, num_total_steps, writer):
     weight_grads = []
     bias_grads = []
     alphas = []
+    matrix_norms = []
     for module in model.net:
         if isinstance(module, HiddenBlock):
+            matrix_norms.append(torch.linalg.norm(module.linear.weight.data))
             weight_grads.append(module.linear.weight.grad.ravel())
             bias_grads.append(module.linear.bias.grad.ravel())
             if isinstance(module.activation, TReLU):
@@ -41,6 +44,7 @@ def write_grads_and_alphas(model, cur_epoch, cur_iter, num_total_steps, writer):
                     alphas.append(param.data.item())
 
         elif isinstance(module, torch.nn.Linear):
+            matrix_norms.append(torch.linalg.norm(module.weight.data))
             weight_grads.append(module.weight.grad.ravel())
             bias_grads.append(module.bias.grad.ravel())
         elif isinstance(module, TReLU):
@@ -52,6 +56,7 @@ def write_grads_and_alphas(model, cur_epoch, cur_iter, num_total_steps, writer):
     print()
     print('Weight grads norm:', weight_grad_norms.item())
     print('Bias grads norm:', bias_grad_norms.item())
+    print('Matrix norms:', [norm.item() for norm in matrix_norms])
 
     if model.beta is not None:
         if model.beta_is_global:
