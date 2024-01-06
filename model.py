@@ -364,7 +364,7 @@ class IMAGENET_CNN(nn.Module):
             n_skipped_layers = torch.sum(betas_tensor <= beta_threshold)
             print(f"Shallow mode: Skipping {n_skipped_layers} layers with beta <= {beta_threshold}.")
 
-        for module in self.net[:-1]:
+        for module in self.net:
             if self.residual_connections and isinstance(module, HiddenBlockCNN):
                 beta = self.beta if self.beta_is_global else self.beta[beta_idx]
                 beta_idx += 1

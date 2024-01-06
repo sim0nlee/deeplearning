@@ -16,6 +16,8 @@ run_name = "runs/mnist/residual/adam/trainable_beta/lr_beta_1e-2/individual_beta
 run_name = "runs/mnist/residual_cnn/adam/constant_beta/0.5/100_epochs/shallow_12"
 run_name = "runs/mnist/residual_cnn/adam/trainable_beta_regularized_0.0001/lr_beta_1e-2/individual_betas/0.5/100_epochs/shallow_12"
 #run_name = "runs/mnist/trelu_cnn/adam/100_epochs/12/lr_alpha_1e-3"
+run_name = "runs/mnist/baseline_cnn/adam/100_epochs/12/fixed"
+run_name = "runs/mnist/residual_cnn/adam/trainable_beta/lr_beta_1e-3/individual_betas/0.5/100_epochs/shallow_12_fixed"
 writer = SummaryWriter(run_name)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
