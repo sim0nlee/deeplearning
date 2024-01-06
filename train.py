@@ -2,7 +2,9 @@ import torch
 import numpy as np
 
 from activation import TReLU
-from model import HiddenBlock
+from model import HiddenBlock, HiddenBlockCNN
+
+REGULARIZATION = 0.0001
 
 def train(dataloader, model, loss_fn, optimizer, epoch, device, writer=None):
     num_total_steps = len(dataloader)
@@ -15,6 +17,10 @@ def train(dataloader, model, loss_fn, optimizer, epoch, device, writer=None):
         # Compute prediction error
         pred = model(X)
         loss = loss_fn(pred, y)
+        # Uncomment to use beta regularization
+        # if model.beta is not None and model.beta_is_trainable and not model.beta_is_global:
+        #     betas_tensor = torch.cat([b.view(-1) for b in model.beta])
+        #     loss += REGULARIZATION * torch.norm(betas_tensor, p=1)
 
         # Backpropagation
         loss.backward()
@@ -33,20 +39,29 @@ def write_grads_and_alphas(model, cur_epoch, cur_iter, num_total_steps, writer):
     weight_grads = []
     bias_grads = []
     alphas = []
-    matrix_norms = []
+    #matrix_norms = []
     for module in model.net:
         if isinstance(module, HiddenBlock):
-            matrix_norms.append(torch.linalg.norm(module.linear.weight.data))
+            #matrix_norms.append(torch.linalg.norm(module.linear.weight.data))
             weight_grads.append(module.linear.weight.grad.ravel())
             bias_grads.append(module.linear.bias.grad.ravel())
             if isinstance(module.activation, TReLU):
                 for param in module.activation.parameters():
                     alphas.append(param.data.item())
 
+        elif isinstance(module, HiddenBlockCNN):
+            #matrix_norms.append(torch.linalg.norm(module.conv.weight.data))
+            weight_grads.append(module.conv.weight.grad.ravel())
+            bias_grads.append(module.conv.bias.grad.ravel())
+            if isinstance(module.activation, TReLU):
+                for param in module.activation.parameters():
+                    alphas.append(param.data.item())
+
         elif isinstance(module, torch.nn.Linear):
-            matrix_norms.append(torch.linalg.norm(module.weight.data))
-            weight_grads.append(module.weight.grad.ravel())
-            bias_grads.append(module.bias.grad.ravel())
+            #matrix_norms.append(torch.linalg.norm(module.weight.data))
+            if module.weight.grad is not None:
+                weight_grads.append(module.weight.grad.ravel())
+                bias_grads.append(module.bias.grad.ravel())
         elif isinstance(module, TReLU):
             for param in module.parameters():
                 alphas.append(param.data.item())
@@ -56,7 +71,7 @@ def write_grads_and_alphas(model, cur_epoch, cur_iter, num_total_steps, writer):
     print()
     print('Weight grads norm:', weight_grad_norms.item())
     print('Bias grads norm:', bias_grad_norms.item())
-    print('Matrix norms:', [norm.item() for norm in matrix_norms])
+    #print('Matrix norms:', [norm.item() for norm in matrix_norms])
 
     if model.beta is not None:
         if model.beta_is_global:
