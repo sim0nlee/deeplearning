@@ -14,25 +14,25 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # MODEL HYPERPARAMETERS
 depth              = 100
 width              = 100
-activation         = "trelu"
-trelu_is_trainable = True
-alpha              = 1.0
-normalize          = True
+activation         = "trelu"  # Can take values "relu", "lrelu", "trelu"
+trelu_is_trainable = True  # If the activation is set to "trelu", determines whether the alpha parameter is trainable
+alpha              = 1.0   # If the activation is set to "trelu", this is the starting alpha parameter
+normalize          = True  # Determines whether batch normalization is active
 
 # TRAINING HYPERPARAMETERS
 batch_size    = 256
 epochs        = 5
 adam_lr       = 1e-3 if depth < 200 else 1e-4
-adam_alpha_lr = 1e-2
+adam_alpha_lr = 1e-2  # The ad-hoc learning rate to use for the alpha parameter of the ReLU (if trainable)
 
 # BEST ALPHA COMPUTATION PARAMETERS
+compute_best_alpha = False  # If set to True, computes the two optimal alpha values
 eta                = 0.9
-compute_best_alpha = False
 
 
 if __name__ == "__main__":
 
-    # If compute_best_alpha is True we use this value for alpha
+    # If compute_best_alpha is True the value of alpha is overwritten with one of the optimal ones
     if compute_best_alpha:
         OPTIMAL_ALPHA_1, OPTIMAL_ALPHA_2 = list(optimal_trelu_params(depth, eta))
         alpha = OPTIMAL_ALPHA_1  # OPTIMAL_ALPHA_2

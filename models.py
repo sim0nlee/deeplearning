@@ -75,7 +75,7 @@ class MNIST_MLP(torch.nn.Module):
                     params.append(param)
         return params
 
-    def forward(self, x):
+    def forward(self, x, shallow=False):
         x = torch.nn.Flatten()(x)
         for module in self.net:
             x = x.type(torch.float32)
@@ -163,7 +163,7 @@ class HiddenBlockCNN(torch.nn.Module):
 class MNIST_CNN(torch.nn.Module):
     def __init__(self,
                  depth,
-                 width,
+                 kernels,
                  activation,
                  alpha_init=1.0,
                  device="cpu",
@@ -176,31 +176,18 @@ class MNIST_CNN(torch.nn.Module):
                  normalize=False):
         super().__init__()
 
-        print(f"Network Depth: {depth}, Network Width: {width}.")
-        print(f"Using {activation} activation.")
-        if activation == "trelu":
-            print(f"TReLU alpha initialization: {alpha_init}.")
-            if trelu_is_trainable:
-                print("TReLU is trainable.")
-        if residual_connections:
-            print("Residual connections on.")
-            print(f"Residual connections beta initialization: {beta_init}.")
-            if beta_is_trainable:
-                print("Beta is trainable.")
-                if beta_is_global:
-                    print("Beta is global.")
-                else:
-                    print("Beta is per layer.")
-        if normalize:
-            print("Batch normalization on.")
-        print()
-
+        self.depth = depth
+        self.kernels = kernels
+        self.activation = activation
         self.device = device
+        self.alpha_init = alpha_init
+        self.beta_init = beta_init
+        self.trelu_is_trainable = trelu_is_trainable
         self.beta_is_global = beta_is_global
         self.beta_is_trainable = beta_is_trainable
         self.residual_connections = residual_connections
-        self.depth = depth
         self.activation_before_residual = activation_before_residual
+        self.normalize = normalize
 
         layers = []
 
@@ -215,7 +202,7 @@ class MNIST_CNN(torch.nn.Module):
 
         for d in range(depth):
             if d == 0:  # Input layer
-                layers.append(torch.nn.Conv2d(1, width, kernel_size=3, padding=1))
+                layers.append(torch.nn.Conv2d(1, kernels, kernel_size=3, padding=1))
                 if activation == "relu":  # Activation functions after all layers but the last
                     layers.append(torch.nn.ReLU())
                 elif activation == "trelu":
@@ -223,7 +210,7 @@ class MNIST_CNN(torch.nn.Module):
                 # layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
 
             elif d == depth - 1:  # Last layer
-                layers.append(torch.nn.Conv2d(width, 1, kernel_size=3, padding=1))
+                layers.append(torch.nn.Conv2d(kernels, 1, kernel_size=3, padding=1))
                 if activation == "relu":  # Activation functions after all layers but the last
                     layers.append(torch.nn.ReLU())
                 elif activation == "trelu":
@@ -232,19 +219,20 @@ class MNIST_CNN(torch.nn.Module):
                 # layers.append(nn.Linear(32*32, 10))
                 layers.append(torch.nn.Linear(28 * 28, 10))
 
-
             else:  # Hidden layers
                 activation_module = torch.nn.ReLU() if activation == "relu" else TReLU(alpha_init,
                                                                                        trainable=trelu_is_trainable,
                                                                                        device=self.device)
-                layers.append(HiddenBlockCNN(width,
-                                             width,
+                layers.append(HiddenBlockCNN(kernels,
+                                             kernels,
                                              activation_module,
                                              residual=residual_connections,
                                              activation_before_residual=activation_before_residual,
                                              normalize=normalize))
 
         self.net = torch.nn.ModuleList(layers)
+
+        self.print_model_info()
 
     def base_params(self):
         params = []
@@ -286,3 +274,23 @@ class MNIST_CNN(torch.nn.Module):
                 x = module(x)
 
         return x
+
+    def print_model_info(self):
+        print(f"Network Depth: {self.depth}, Kernels: {self.kernels}.")
+        print(f"Using {self.activation} activation.")
+        if self.activation == "trelu":
+            print(f"TReLU alpha initialization: {self.alpha_init}.")
+            if self.trelu_is_trainable:
+                print("TReLU is trainable.")
+        if self.residual_connections:
+            print("Residual connections on.")
+            print(f"Residual connections beta initialization: {self.beta_init}.")
+            if self.beta_is_trainable:
+                print("Beta is trainable.")
+                if self.beta_is_global:
+                    print("Beta is global.")
+                else:
+                    print("Beta is per layer.")
+        if self.normalize:
+            print("Batch normalization on.")
+        print()
