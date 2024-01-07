@@ -5,7 +5,7 @@ from torch.utils.tensorboard import SummaryWriter
 from data import get_train_dataloader_MNIST, get_test_dataloader_MNIST
 from train import train
 from test import test
-from model import MNIST_MLP
+from models import MNIST_MLP
 from activation import optimal_trelu_params
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
