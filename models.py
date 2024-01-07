@@ -170,25 +170,6 @@ class MNIST_MLP(torch.nn.Module):
                  normalize=False):
         super().__init__()
 
-        print(f"Network Depth: {depth}, Network Width: {width}.")
-        print(f"Using {activation} activation.")
-        if activation == "trelu":
-            print(f"TReLU alpha initialization: {alpha_init}.")
-            if trelu_is_trainable:
-                print("TReLU is trainable.")
-        if residual_connections:
-            print("Residual connections on.")
-            print(f"Residual connections beta initialization: {beta_init}.")
-            if beta_is_trainable:
-                print("Beta is trainable.")
-                if beta_is_global:
-                    print("Beta is global.")
-                else:
-                    print("Beta is per layer.")
-        if normalize:
-            print("Batch normalization on.")
-        print()
-
         self.depth = depth
         self.width = width
         self.activation = activation
@@ -237,6 +218,9 @@ class MNIST_MLP(torch.nn.Module):
 
         self.net = torch.nn.ModuleList(layers)
 
+        self.print_model_info()
+
+
     def base_params(self):
         params = []
         for l in self.net:
@@ -281,7 +265,7 @@ class MNIST_MLP(torch.nn.Module):
         return x
 
     def print_model_info(self):
-        print(f"Network Depth: {self.depth}, Kernels: {self.kernels}.")
+        print(f"Network Depth: {self.depth}, Width: {self.width}.")
         print(f"Using {self.activation} activation.")
         if self.activation == "trelu":
             print(f"TReLU alpha initialization: {self.alpha_init}.")

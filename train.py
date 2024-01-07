@@ -1,7 +1,7 @@
 import torch
 
 from activation import TReLU
-from models import HiddenBlockCNN
+from models import HiddenBlock, HiddenBlockCNN
 
 
 def train(dataloader, batch_size, model, loss_fn, optimizer, epoch, device, writer=None):
@@ -36,18 +36,25 @@ def print_model_data(model, n_steps, cur_epoch, cur_iter, writer):
     alphas       = []
 
     for module in model.net:
-        if isinstance(module, torch.nn.Linear):
-            weight_grads.append(module.weight.grad.ravel())
-            bias_grads.append(module.bias.grad.ravel())
-        elif isinstance(module, TReLU):
-            for param in module.parameters():
-                alphas.append(param.data.item())
+        if isinstance(module, HiddenBlock):
+            # matrix_norms.append(torch.linalg.norm(module.linear.weight.data))
+            weight_grads.append(module.linear.weight.grad.ravel())
+            bias_grads.append(module.linear.bias.grad.ravel())
+            if isinstance(module.activation, TReLU):
+                for param in module.activation.parameters():
+                    alphas.append(param.data.item())
         elif isinstance(module, HiddenBlockCNN):
             weight_grads.append(module.conv.weight.grad.ravel())
             bias_grads.append(module.conv.bias.grad.ravel())
             if isinstance(module.activation, TReLU):
                 for param in module.activation.parameters():
                     alphas.append(param.data.item())
+        elif isinstance(module, torch.nn.Linear):
+            weight_grads.append(module.weight.grad.ravel())
+            bias_grads.append(module.bias.grad.ravel())
+        elif isinstance(module, TReLU):
+            for param in module.parameters():
+                alphas.append(param.data.item())
 
     weight_grad_norms = torch.linalg.norm(torch.cat(weight_grads))
     bias_grad_norms = torch.linalg.norm(torch.cat(bias_grads))
