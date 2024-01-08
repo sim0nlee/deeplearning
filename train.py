@@ -37,7 +37,6 @@ def print_model_data(model, n_steps, cur_epoch, cur_iter, writer):
 
     for module in model.net:
         if isinstance(module, HiddenBlock):
-            # matrix_norms.append(torch.linalg.norm(module.linear.weight.data))
             weight_grads.append(module.linear.weight.grad.ravel())
             bias_grads.append(module.linear.bias.grad.ravel())
             if isinstance(module.activation, TReLU):

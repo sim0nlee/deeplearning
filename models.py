@@ -103,7 +103,6 @@ class MNIST_MLP(torch.nn.Module):
         for d in range(depth):
             if d == 0:  # Input layer
                 layers.append(torch.nn.Linear(28 * 28, width))
-                # layers.append(nn.Linear(12288, width))
                 if activation == "relu":  # Activation functions after all layers but the last
                     layers.append(torch.nn.ReLU())
                 elif activation == "trelu":
@@ -111,7 +110,6 @@ class MNIST_MLP(torch.nn.Module):
 
             elif d == depth - 1:  # Last layer
                 layers.append(torch.nn.Linear(width, 10))
-                # layers.append(nn.Linear(width, 200))
 
             else:  # Hidden layers
                 activation_module = torch.nn.ReLU() if activation == "relu" else TReLU(alpha_init,
@@ -216,7 +214,6 @@ class HiddenBlockCNN(torch.nn.Module):
         if normalize:
             self.bn = torch.nn.BatchNorm2d(out_channels)
 
-        # self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
     def base_params(self):
         params = []
@@ -241,20 +238,17 @@ class HiddenBlockCNN(torch.nn.Module):
                     x_aux = self.bn(x_aux)
                 x_aux = self.activation(x_aux)
                 x = x + x_aux
-                # x_aux = self.pool(x_aux)
             else:
                 x = x + beta * self.conv(x) / depth_scaler
                 if self.bn is not None:
                     x = self.bn(x)
                 x = self.activation(x)
-                # x = self.pool(x)
 
         else:
             x = self.conv(x)
             if self.bn is not None:
                 x = self.bn(x)
             x = self.activation(x)
-            # x = self.pool(x)
 
         return x
 
@@ -306,7 +300,6 @@ class MNIST_CNN(torch.nn.Module):
                     layers.append(torch.nn.ReLU())
                 elif activation == "trelu":
                     layers.append(TReLU(alpha_init, trainable=trelu_is_trainable, device=self.device))
-                # layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
 
             elif d == depth - 1:  # Last layer
                 layers.append(torch.nn.Conv2d(kernels, 1, kernel_size=3, padding=1))
@@ -315,7 +308,6 @@ class MNIST_CNN(torch.nn.Module):
                 elif activation == "trelu":
                     layers.append(TReLU(alpha_init, trainable=trelu_is_trainable, device=self.device))
                 layers.append(torch.nn.Flatten())
-                # layers.append(nn.Linear(32*32, 10))
                 layers.append(torch.nn.Linear(28 * 28, 10))
 
             else:  # Hidden layers
