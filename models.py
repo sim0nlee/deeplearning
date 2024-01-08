@@ -162,7 +162,7 @@ class MNIST_MLP(torch.nn.Module):
             if self.residual_connections and isinstance(module, HiddenBlock):
                 beta = self.beta if self.beta_is_global else self.beta[beta_idx]
                 beta_idx += 1
-                if not shallow or beta > beta_threshold:
+                if self.beta_is_global or not shallow or beta.abs() > beta_threshold:
                     x = module(x, beta=beta, depth_scaler=np.sqrt(self.depth))
 
             else:
