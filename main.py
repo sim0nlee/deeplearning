@@ -23,7 +23,12 @@ from activation import optimal_trelu_params
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-ARCHITECTURE = "CNN"  # "CNN"
+#############################################################################
+####################  START CUSTOMIZING PARAMETERS HERE  ####################
+#############################################################################
+
+
+ARCHITECTURE = "MLP"  # "CNN"
 
 
 if ARCHITECTURE not in ["MLP", "CNN"]:
@@ -36,9 +41,9 @@ if ARCHITECTURE == "MLP":
     width = 100
 else:
     kernels = 12
-depth              = 100
-activation         = "relu"  # Can take values "relu", "trelu"
-residual_connections_on = True
+depth              = 1000
+activation         = "trelu"  # Can take values "relu", "trelu"
+residual_connections_on = False
 activation_before_residual = False  # No effect if residual branches are off
 trelu_is_trainable = False  # If the activation is set to "trelu", determines whether the alpha parameter is trainable, otherwise has no effect
 alpha              = 1.0  # If the activation is set to "trelu", this is the starting alpha parameter, otherwise has no effect
@@ -52,7 +57,7 @@ batch_size    = 256
 epochs        = 5
 adam_lr       = 1e-4 if ARCHITECTURE == "MLP" and depth >= 200 else 1e-3
 adam_alpha_lr = 1e-2  # The ad-hoc learning rate to use for the alpha parameter of the ReLU (if trainable)
-adam_beta_lr  = 1e-3  # The ad-hoc learning rate to use for the beta parameter of the residual branches (if trainable)
+adam_beta_lr  = 1e-2  # The ad-hoc learning rate to use for the beta parameter of the residual branches (if trainable)
 
 # MISCELLANEOUS
 compute_best_alpha = True  # If set to True, computes the two optimal alpha values and overwrites the alpha set above with one of those values
