@@ -53,6 +53,7 @@ class HiddenBlock(torch.nn.Module):
                 x = self.activation(x)
 
         else:
+            x = x.type(torch.float32)
             x = self.linear(x)
             if self.bn is not None:
                 x = self.bn(x)
@@ -165,6 +166,7 @@ class MNIST_MLP(torch.nn.Module):
                     x = module(x, beta=beta, depth_scaler=np.sqrt(self.depth))
 
             else:
+                x = x.type(torch.float32)
                 x = module(x)
 
         return x

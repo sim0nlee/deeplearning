@@ -36,16 +36,16 @@ if ARCHITECTURE == "MLP":
     width = 100
 else:
     kernels = 12
-depth              = 50
-activation         = "relu"  # Can take values "relu", "trelu"
-residual_connections_on = True
-trelu_is_trainable = True  # If the activation is set to "trelu", determines whether the alpha parameter is trainable, otherwise has no effect
+depth              = 100
+activation         = "trelu"  # Can take values "relu", "trelu"
+residual_connections_on = False
+activation_before_residual = False  # No effect if residual branches are off
+trelu_is_trainable = False  # If the activation is set to "trelu", determines whether the alpha parameter is trainable, otherwise has no effect
 alpha              = 1.0  # If the activation is set to "trelu", this is the starting alpha parameter, otherwise has no effect
 beta               = 0.5  # If residual branches are active, beta takes this value, otherwise has no effect
 beta_is_trainable  = False
 beta_is_global     = False  # If beta is not trainable has no effect, otherwise if this is True, beta takes the same value for every layer during training
 normalize          = True  # Determines whether batch normalization is active
-activation_before_residual = False  # No effect if residual branches are off
 
 # TRAINING HYPERPARAMETERS
 batch_size    = 256
@@ -55,7 +55,7 @@ adam_alpha_lr = 1e-2  # The ad-hoc learning rate to use for the alpha parameter 
 adam_beta_lr  = 1e-3  # The ad-hoc learning rate to use for the beta parameter of the residual branches (if trainable)
 
 # BEST ALPHA COMPUTATION PARAMETERS
-compute_best_alpha = False  # If set to True, computes the two optimal alpha values and overwrites the alpha set above with one of those values
+compute_best_alpha = True  # If set to True, computes the two optimal alpha values and overwrites the alpha set above with one of those values
 eta                = 0.9
 
 
