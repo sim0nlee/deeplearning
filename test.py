@@ -33,5 +33,6 @@ def test(dataloader, model, loss_fn, epoch, device, shallow=False, writer=None):
         test_loss_shallow /= num_batches
         correct_shallow /= size
         print(f"Test Error Shallow: \n Accuracy: {(100 * correct_shallow):>0.1f}%, Avg loss: {test_loss_shallow:>8f} \n\n")
-        writer.add_scalar('Test Accuracy Shallow', correct_shallow, epoch)
+        if writer:
+            writer.add_scalar('Test Accuracy Shallow', correct_shallow, epoch)
 

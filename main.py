@@ -23,7 +23,7 @@ from activation import optimal_trelu_params
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-ARCHITECTURE = "MLP"  # "CNN"
+ARCHITECTURE = "CNN"  # "CNN"
 
 
 if ARCHITECTURE not in ["MLP", "CNN"]:
@@ -37,15 +37,15 @@ if ARCHITECTURE == "MLP":
 else:
     kernels = 12
 depth              = 100
-activation         = "trelu"  # Can take values "relu", "trelu"
-residual_connections_on = False
+activation         = "relu"  # Can take values "relu", "trelu"
+residual_connections_on = True
 activation_before_residual = False  # No effect if residual branches are off
 trelu_is_trainable = False  # If the activation is set to "trelu", determines whether the alpha parameter is trainable, otherwise has no effect
 alpha              = 1.0  # If the activation is set to "trelu", this is the starting alpha parameter, otherwise has no effect
 beta               = 0.5  # If residual branches are active, beta takes this value, otherwise has no effect
 beta_is_trainable  = False
 beta_is_global     = False  # If beta is not trainable has no effect, otherwise if this is True, beta takes the same value for every layer during training
-normalize          = True  # Determines whether batch normalization is active
+normalize          = False  # Determines whether batch normalization is active
 
 # TRAINING HYPERPARAMETERS
 batch_size    = 256
@@ -54,10 +54,10 @@ adam_lr       = 1e-4 if ARCHITECTURE == "MLP" and depth >= 200 else 1e-3
 adam_alpha_lr = 1e-2  # The ad-hoc learning rate to use for the alpha parameter of the ReLU (if trainable)
 adam_beta_lr  = 1e-3  # The ad-hoc learning rate to use for the beta parameter of the residual branches (if trainable)
 
-# BEST ALPHA COMPUTATION PARAMETERS
+# MISCELLANEOUS
 compute_best_alpha = True  # If set to True, computes the two optimal alpha values and overwrites the alpha set above with one of those values
-eta                = 0.9
-
+eta                = 0.9  # Eta parameter for the best alpha computation
+shallow            = True  # If set to True and residual connections are on, runs tests on shallow mode omitting the layers for which beta <= threshold
 
 writer_path = ""
 writer = SummaryWriter(writer_path) if writer_path != "" else None
@@ -119,4 +119,4 @@ if __name__ == "__main__":
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1}\n-------------------------------")
         train(train_dataloader, batch_size, model, criterion, optimizer, epoch, device, writer)
-        test(test_dataloader, model, criterion, epoch, device, writer)
+        test(test_dataloader, model, criterion, epoch, device, shallow=shallow, writer=writer)
